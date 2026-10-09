@@ -137,6 +137,8 @@ export interface CommandEvent {
   /** 一次调用的序号：同一次动作的行共用一个 id。 */
   id: number
   kind: CommandEventKind
+  /** `user` = 用户点的操作（会**自动弹出**抽屉）；`auto` = 界面自己的轮询。 */
+  origin: 'user' | 'auto'
   /** 内容；`exit` 时是退出码。 */
   line: string
 }

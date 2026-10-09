@@ -220,6 +220,10 @@ pub struct CommandEvent {
     pub id: u64,
     /// `command`（要跑的命令行）/ `stdout` / `stderr` / `exit`。
     pub kind: &'static str,
+    /// `user`（用户点的安装/卸载/启停/自启）或 `auto`（界面自己的状态轮询）。
+    ///
+    /// 抽屉只在 `user` 时自动弹出：轮询每 10 秒一次，全弹出来界面就没法用了。
+    pub origin: &'static str,
     /// 内容；`exit` 时是退出码。
     pub line: String,
 }
@@ -231,12 +235,19 @@ fn next_command_id() -> u64 {
 }
 
 /// 往抽屉里写一行（发不出去就算了：抽屉是给人看的，不该影响命令本身）。
-fn emit_command(app: &AppHandle, id: u64, kind: &'static str, line: impl Into<String>) {
+fn emit_command(
+    app: &AppHandle,
+    id: u64,
+    kind: &'static str,
+    origin: &'static str,
+    line: impl Into<String>,
+) {
     let _ = app.emit(
         COMMAND_EVENT,
         CommandEvent {
             id,
             kind,
+            origin,
             line: line.into(),
         },
     );
@@ -249,21 +260,22 @@ fn run_with_events(
     app: &AppHandle,
     exe: &Path,
     args: &[String],
+    origin: &'static str,
 ) -> Result<sidecar::SidecarOutput, sidecar::SidecarError> {
     let id = next_command_id();
-    emit_command(app, id, "command", sidecar::display_line(exe, args));
+    emit_command(app, id, "command", origin, sidecar::display_line(exe, args));
 
     let result = sidecar::run_streaming(exe, args, |kind, line| {
         let kind = match kind {
             sidecar::StreamKind::Stdout => "stdout",
             sidecar::StreamKind::Stderr => "stderr",
         };
-        emit_command(app, id, kind, line);
+        emit_command(app, id, kind, origin, line);
     });
 
     match &result {
-        Ok(output) => emit_command(app, id, "exit", output.code.to_string()),
-        Err(error) => emit_command(app, id, "stderr", error.to_string()),
+        Ok(output) => emit_command(app, id, "exit", origin, output.code.to_string()),
+        Err(error) => emit_command(app, id, "stderr", origin, error.to_string()),
     }
     result
 }
@@ -276,26 +288,27 @@ fn run_elevated_with_events(
     app: &AppHandle,
     exe: &Path,
     args: &[String],
+    origin: &'static str,
 ) -> Result<ElevationOutcome, String> {
     let id = next_command_id();
-    emit_command(app, id, "command", sidecar::display_line(exe, args));
+    emit_command(app, id, "command", origin, sidecar::display_line(exe, args));
 
     let outcome = elevate::run(exe, args);
 
     match &outcome {
         Ok(ElevationOutcome::Ran(output)) => {
             for line in output.stdout.lines() {
-                emit_command(app, id, "stdout", line.to_owned());
+                emit_command(app, id, "stdout", origin, line.to_owned());
             }
             for line in output.stderr.lines() {
-                emit_command(app, id, "stderr", line.to_owned());
+                emit_command(app, id, "stderr", origin, line.to_owned());
             }
-            emit_command(app, id, "exit", output.code.to_string());
+            emit_command(app, id, "exit", origin, output.code.to_string());
         }
         Ok(ElevationOutcome::Cancelled) => {
-            emit_command(app, id, "stderr", "已取消提权（用户点了「否」）");
+            emit_command(app, id, "stderr", origin, "已取消提权（用户点了「否」）");
         }
-        Err(error) => emit_command(app, id, "stderr", error.clone()),
+        Err(error) => emit_command(app, id, "stderr", origin, error.clone()),
     }
 
     outcome
@@ -311,7 +324,7 @@ pub async fn service_status(app: AppHandle) -> Result<ServiceStatus, CommandErro
     let exe = sidecar::sidecar_path()
         .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
     let output = tauri::async_runtime::spawn_blocking(move || {
-        run_with_events(&app, &exe, &sidecar::status_args())
+        run_with_events(&app, &exe, &sidecar::status_args(), "auto")
     })
     .await
     .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
@@ -363,7 +376,7 @@ pub async fn service_action(
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
         let outcome = tauri::async_runtime::spawn_blocking(move || {
-            run_elevated_with_events(&app, &exe, &args)
+            run_elevated_with_events(&app, &exe, &args, "user")
         })
         .await
         .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
@@ -382,10 +395,12 @@ pub async fn service_action(
     } else {
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
-        tauri::async_runtime::spawn_blocking(move || run_with_events(&app, &exe, &args.clone()))
-            .await
-            .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
-            .map_err(CommandError::from_sidecar)?
+        tauri::async_runtime::spawn_blocking(move || {
+            run_with_events(&app, &exe, &args.clone(), "user")
+        })
+        .await
+        .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
+        .map_err(CommandError::from_sidecar)?
     };
 
     let parsed = sidecar::parse_action(&output).map_err(CommandError::from_sidecar)?;
@@ -409,7 +424,7 @@ pub async fn set_autostart(app: AppHandle, on: bool) -> Result<ActionResult, Com
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
         match tauri::async_runtime::spawn_blocking(move || {
-            run_elevated_with_events(&app, &exe, &args)
+            run_elevated_with_events(&app, &exe, &args, "user")
         })
         .await
         .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
@@ -423,7 +438,7 @@ pub async fn set_autostart(app: AppHandle, on: bool) -> Result<ActionResult, Com
     } else {
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
-        tauri::async_runtime::spawn_blocking(move || run_with_events(&app, &exe, &args))
+        tauri::async_runtime::spawn_blocking(move || run_with_events(&app, &exe, &args, "user"))
             .await
             .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
             .map_err(CommandError::from_sidecar)?

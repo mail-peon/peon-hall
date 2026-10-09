@@ -33,8 +33,9 @@ function write(event: CommandEvent) {
   switch (event.kind) {
     case 'command':
       term.write(`\r\n\x1b[36m$ ${event.line}\x1b[0m\r\n`)
-      // 跑命令就弹出来：用户点的是「安装」，看不到过程只会更慌
-      if (!props.open) emit('toggle', true)
+      // **只在用户主动操作时**弹出来：状态轮询每 10 秒一次，
+      // 每次都弹会把界面搅得没法用（而且它没什么可看的）。
+      if (event.origin === 'user' && !props.open) emit('toggle', true)
       break
     case 'stderr':
       term.write(`\x1b[31m${event.line}\x1b[0m\r\n`)
@@ -122,7 +123,15 @@ watch(
 
 <template>
   <footer class="drawer" data-testid="command-drawer">
-    <!-- 面板：高度 0 ↔ 42vh，视觉上就是从 footer 由下往上抽出来 -->
+    <!-- 毛玻璃遮罩：展开时压住底下的内容（点它收起），让终端成为焦点 -->
+    <div
+      v-if="open"
+      class="drawer-scrim"
+      data-testid="command-drawer-scrim"
+      @click="emit('toggle', false)"
+    />
+
+    <!-- 面板：高度 0 ↔ 90%，视觉上就是从 footer 由下往上抽出来 -->
     <section class="drawer-panel" :class="{ 'drawer-panel-open': open }" :aria-hidden="!open">
       <header class="drawer-header">
         <span class="drawer-title">{{ drawer.title }}</span>
@@ -185,7 +194,17 @@ watch(
 }
 
 .drawer-panel-open {
-  height: 42vh;
+  /* 90% 视口高，减去常驻 footer 条，别把 footer 顶出屏幕 */
+  height: calc(90vh - 32px);
+}
+
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgb(3 7 12 / 55%);
+  backdrop-filter: blur(6px) saturate(120%);
+  cursor: pointer;
 }
 
 .drawer-header {
