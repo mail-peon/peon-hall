@@ -47,8 +47,6 @@ pub struct ElevationCommand {
 /// Windows 提权时用来接输出的三个临时文件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElevationFiles {
-    /// 交给 `cmd /c` 执行的批处理（重定向写在这里面）。
-    pub script: PathBuf,
     /// 子进程的 stdout 落在这里。
     pub stdout: PathBuf,
     /// 子进程的 stderr 落在这里。
@@ -65,7 +63,6 @@ impl ElevationFiles {
         let base =
             std::env::temp_dir().join(format!("peon-hall-elevate-{}-{stamp}", std::process::id()));
         Ok(Self {
-            script: base.with_extension("cmd"),
             stdout: base.with_extension("out"),
             stderr: base.with_extension("err"),
         })
@@ -73,17 +70,24 @@ impl ElevationFiles {
 
     /// 清理临时文件（失败就算了：临时目录里的垃圾比一个 panic 无害）。
     pub fn cleanup(&self) {
-        for path in [&self.script, &self.stdout, &self.stderr] {
+        for path in [&self.stdout, &self.stderr] {
             let _ = std::fs::remove_file(path);
         }
     }
 }
 
-/// 批处理正文：**重定向在 cmd 里做**（原因见文件头注释）。
+/// 给 `cmd /c` 的一条命令行：`"<exe>" <args> > "<out>" 2> "<err>"`。
+///
+/// ⚠️ **不写中间批处理**：曾经是「写一个 .cmd 再提权跑它」，而用户机器上弹出了 Windows 的
+/// 「你要如何打开这个文件?」（ShellExecute 遇到没有关联的文件时的行为）。现在提权的目标
+/// 只有 `cmd.exe` 本身，没有任何需要「打开」的中间文件。
+///
+/// cmd 的行规则：整条命令以引号开头时，**最外层还要再包一对引号**，所以返回的字符串形如
+/// `""C:\a b\burrow.exe" run > "out" 2> "err""`。
 ///
 /// 只接受我们自己构造的参数；出现 `"` / `%` / 换行这类无法安全传给 cmd 的字符时**报错**，
 /// 而不是想办法转义 —— 这台机器上的参数永远不该有它们。
-pub fn batch_body(exe: &Path, args: &[String], files: &ElevationFiles) -> Result<String, String> {
+pub fn cmd_line(exe: &Path, args: &[String], files: &ElevationFiles) -> Result<String, String> {
     let exe = exe.display().to_string();
     if exe.contains('"') {
         return Err(format!("安装路径里有引号，无法安全提权：{exe}"));
@@ -94,28 +98,29 @@ pub fn batch_body(exe: &Path, args: &[String], files: &ElevationFiles) -> Result
         }
     }
 
-    let mut line = format!("\"{exe}\"");
+    let mut line = format!("\"\"{exe}\"");
     for arg in args {
         line.push(' ');
         line.push_str(arg);
     }
-
-    Ok(format!(
-        "@echo off\r\n{line} > \"{}\" 2> \"{}\"\r\nexit /b %ERRORLEVEL%\r\n",
+    line.push_str(&format!(
+        " > \"{}\" 2> \"{}\"\"",
         files.stdout.display(),
         files.stderr.display()
-    ))
+    ));
+    Ok(line)
 }
 
 /// 构造提权命令（**纯函数**：平台分支可单测，不需要真的弹 UAC）。
-pub fn elevation_command(files: &ElevationFiles) -> ElevationCommand {
+pub fn elevation_command(line: &str) -> ElevationCommand {
     #[cfg(windows)]
     {
         // 1223 = ERROR_CANCELLED：用固定退出码区分「用户点了否」与「命令真的失败了」
-        let script = files.script.display().to_string().replace('\'', "''");
+        // PowerShell 的单引号字符串里，`'` 要写成 `''`
+        let line = line.replace('\'', "''");
         let command = format!(
             // `-WindowStyle Hidden`：提权出来的 cmd 窗口不该在用户眼前闪
-            "try {{ $p = Start-Process -FilePath $env:ComSpec -ArgumentList '/c','{script}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode }} catch {{ Write-Error $_.Exception.Message; exit 1223 }}"
+            "try {{ $p = Start-Process -FilePath $env:ComSpec -ArgumentList '/c','{line}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode }} catch {{ Write-Error $_.Exception.Message; exit 1223 }}"
         );
         ElevationCommand {
             program: "powershell".to_owned(),
@@ -132,7 +137,7 @@ pub fn elevation_command(files: &ElevationFiles) -> ElevationCommand {
     {
         // 这条分支不用临时文件：osascript 自己就是被 Rust 直接 spawn 的，输出能接住。
         // 正文里放什么由 `run` 决定，这里留一个占位实现。
-        let _ = files;
+        let _ = line;
         ElevationCommand {
             program: "osascript".to_owned(),
             args: Vec::new(),
@@ -142,7 +147,7 @@ pub fn elevation_command(files: &ElevationFiles) -> ElevationCommand {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         // 同上：pkexec 的输出由 Rust 直接接住。
-        let _ = files;
+        let _ = line;
         ElevationCommand {
             program: "pkexec".to_owned(),
             args: Vec::new(),
@@ -176,10 +181,9 @@ pub fn is_cancelled(stderr: &str, code: i32) -> bool {
 #[cfg(windows)]
 pub fn run(exe: &Path, args: &[String]) -> Result<ElevationOutcome, String> {
     let files = ElevationFiles::create().map_err(|error| format!("建不了临时文件：{error}"))?;
-    let body = batch_body(exe, args, &files)?;
-    std::fs::write(&files.script, body).map_err(|error| format!("写不了临时批处理：{error}"))?;
+    let line = cmd_line(exe, args, &files)?;
 
-    let outcome = run_windows(&files);
+    let outcome = run_windows(&line, &files);
     files.cleanup();
 
     let (code, stdout, stderr) = outcome?;
@@ -195,8 +199,8 @@ pub fn run(exe: &Path, args: &[String]) -> Result<ElevationOutcome, String> {
 
 /// Windows 上的实际 spawn：退出码来自 PowerShell，输出来自两个临时文件。
 #[cfg(windows)]
-fn run_windows(files: &ElevationFiles) -> Result<(i32, String, String), String> {
-    let command = elevation_command(files);
+fn run_windows(line: &str, files: &ElevationFiles) -> Result<(i32, String, String), String> {
+    let command = elevation_command(line);
     let mut child = Command::new(&command.program);
     child.args(&command.args);
 
@@ -288,7 +292,6 @@ mod tests {
 
     fn files() -> ElevationFiles {
         ElevationFiles {
-            script: PathBuf::from(r"C:\Temp\elevate.cmd"),
             stdout: PathBuf::from(r"C:\Temp\elevate.out"),
             stderr: PathBuf::from(r"C:\Temp\elevate.err"),
         }
@@ -313,9 +316,9 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn the_batch_redirects_output_so_the_error_survives() {
-        // 这条守的是「安装失败但界面只说退出码 1」那个 bug
-        let body = batch_body(
+    fn the_cmd_line_redirects_output_so_the_error_survives() {
+        // 这条守的是「安装失败但界面只说退出码 1」那个 bug：重定向必须在命令行里
+        let line = cmd_line(
             Path::new(r"C:\Program Files\peon-hall\burrow.exe"),
             &[
                 "service".to_owned(),
@@ -329,68 +332,72 @@ mod tests {
         .expect("应当能生成");
 
         assert!(
-            body.contains(r#""C:\Program Files\peon-hall\burrow.exe""#),
-            "{body}"
+            line.starts_with("\"\"C:\\Program Files\\peon-hall\\burrow.exe\""),
+            "以引号开头时要再包一层引号（cmd 的行规则）：{line}"
         );
         assert!(
-            body.contains("service install --mode system --json"),
-            "{body}"
+            line.contains("service install --mode system --json"),
+            "{line}"
         );
         assert!(
-            body.contains(r#"> "C:\Temp\elevate.out""#),
-            "stdout 必须重定向：{body}"
+            line.contains("> \"C:\\Temp\\elevate.out\""),
+            "stdout 必须重定向：{line}"
         );
         assert!(
-            body.contains(r#"2> "C:\Temp\elevate.err""#),
-            "stderr 必须重定向：{body}"
+            line.contains("2> \"C:\\Temp\\elevate.err\""),
+            "stderr 必须重定向：{line}"
         );
-        assert!(
-            body.contains("exit /b %ERRORLEVEL%"),
-            "退出码要传回去：{body}"
-        );
+        assert!(line.ends_with('"'), "最外层引号要闭合：{line}");
     }
 
     #[cfg(windows)]
     #[test]
     fn the_windows_command_uses_runas_and_a_fixed_cancel_code() {
-        let command = elevation_command(&files());
+        let line = cmd_line(Path::new(r"C:\x\burrow.exe"), &[], &files()).expect("应当能生成");
+        let command = elevation_command(&line);
         assert_eq!(command.program, "powershell");
         let script = command.args.last().expect("脚本");
         assert!(script.contains("-Verb RunAs"), "必须走 UAC：{script}");
-        assert!(script.contains("-Wait"), "要等它跑完：{script}");
         assert!(
             script.contains("-WindowStyle Hidden"),
-            "提权出来的窗口要隐藏：{script}"
+            "窗口要隐藏：{script}"
         );
+        assert!(script.contains("-Wait"), "要等它跑完：{script}");
         assert!(script.contains("exit 1223"), "取消要有固定退出码：{script}");
         assert!(
             script.contains("ComSpec"),
             "要经过 cmd 才能做重定向：{script}"
         );
         assert!(
-            script.contains("elevate.cmd"),
-            "要跑我们写的批处理：{script}"
+            script.contains("elevate.out"),
+            "重定向的落点要进命令行：{script}"
         );
     }
 
     #[cfg(windows)]
     #[test]
-    fn single_quotes_in_the_script_path_are_escaped() {
-        let mut files = files();
-        files.script = PathBuf::from(r"C:\it's here\elevate.cmd");
-        let command = elevation_command(&files);
+    fn single_quotes_in_arguments_are_escaped() {
+        // PowerShell 单引号字符串里的 `'` 必须翻倍，否则命令行会被截断
+        let files = files();
+        let line = cmd_line(
+            Path::new(r"C:\x\burrow.exe"),
+            &["--note".to_owned(), "it's".to_owned()],
+            &files,
+        )
+        .expect("应当能生成");
+        let command = elevation_command(&line);
         let script = command.args.last().expect("脚本");
-        assert!(script.contains("it''s here"), "单引号要翻倍：{script}");
+        assert!(script.contains("it''s"), "单引号要翻倍：{script}");
     }
 
     #[cfg(windows)]
     #[test]
     fn characters_that_cannot_be_passed_to_cmd_are_refused() {
         // 与其想办法转义，不如直接拒绝：我们自己的参数永远不该带这些
-        let quoted = batch_body(Path::new(r#"C:\we"ird\burrow.exe"#), &[], &files());
+        let quoted = cmd_line(Path::new(r#"C:\we"ird\burrow.exe"#), &[], &files());
         assert!(quoted.is_err(), "路径里有引号必须拒绝");
 
-        let percent = batch_body(
+        let percent = cmd_line(
             Path::new(r"C:\ok\burrow.exe"),
             &["--mode".to_owned(), "%PATH%".to_owned()],
             &files(),
@@ -402,18 +409,18 @@ mod tests {
     fn temp_file_names_do_not_collide() {
         let first = ElevationFiles::create().expect("第一次");
         let second = ElevationFiles::create().expect("第二次");
-        assert_ne!(first.script, second.script, "两次调用不能撞名");
-        assert!(first.script.extension().is_some_and(|ext| ext == "cmd"));
+        assert_ne!(first.stdout, second.stdout, "两次调用不能撞名");
+        assert!(first.stdout.extension().is_some_and(|ext| ext == "out"));
     }
 
     #[test]
     fn cleanup_removes_everything_it_created() {
         let files = ElevationFiles::create().expect("建名字");
-        for path in [&files.script, &files.stdout, &files.stderr] {
+        for path in [&files.stdout, &files.stderr] {
             std::fs::write(path, b"x").expect("写文件");
         }
         files.cleanup();
-        for path in [&files.script, &files.stdout, &files.stderr] {
+        for path in [&files.stdout, &files.stderr] {
             assert!(!path.exists(), "{path:?} 应当被删掉");
         }
     }

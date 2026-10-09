@@ -182,8 +182,10 @@ watch(
   z-index: 30;
   display: flex;
   flex-direction: column;
-  background: #0b0f14;
-  border-top: 1px solid #1f2937;
+  /* 整块面板是毛玻璃：终端文字浮在模糊的界面之上，而不是「玻璃上贴一块黑板」 */
+  background: rgb(11 15 20 / 72%);
+  backdrop-filter: blur(18px) saturate(130%);
+  border-top: 1px solid rgb(255 255 255 / 8%);
 }
 
 .drawer-panel {
@@ -195,16 +197,16 @@ watch(
 }
 
 .drawer-panel-open {
-  /* 90% 视口高，减去常驻 footer 条，别把 footer 顶出屏幕 */
-  height: calc(90vh - 32px);
+  /* 100% 减掉常驻 footer 条的高度（别把它顶出屏幕） */
+  height: calc(100vh - 32px);
 }
 
 .drawer-scrim {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: rgb(3 7 12 / 55%);
-  backdrop-filter: blur(6px) saturate(120%);
+  background: rgb(3 7 12 / 45%);
+  backdrop-filter: blur(10px) saturate(120%);
   cursor: pointer;
 }
 
@@ -262,7 +264,7 @@ watch(
   font-size: 12px;
   text-align: left;
   cursor: pointer;
-  background: #111827;
+  background: rgb(17 24 39 / 55%);
   border: 0;
 }
 
