@@ -3,6 +3,8 @@
 # ⚠️ 这里刻意**没有** push / pull_request 触发：本仓库只有一个自动化入口
 # —— `.github/workflows/release.yaml`（只吃 `v*.*.*` tag）。
 # 也就是说：检查发生在发版那一刻，而不是每次推送。
+#
+# ⚠️ 除注释外**不要写中文**（含 job/step 的 name 与 echo 文案）：CI 日志保持英文。
 name: ci
 
 on:
@@ -13,7 +15,7 @@ env:
 
 jobs:
   frontend:
-    name: 前端（typecheck + build + 类型对拍）
+    name: frontend (typecheck, build, type mirror)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +36,35 @@ jobs:
           path: dist
           if-no-files-found: error
 
+      - name: workflow hygiene (english outside comments, no hash in names)
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          # 规则一：除注释外不许有中文（整行注释与行尾注释都不算代码）
+          # 规则二：name 里不能有 `#` —— GitHub 会把它当注释，后面的字直接消失
+          for file in .github/workflows/*.yaml .github/workflows/*.yml; do
+            [ -f "$file" ] || continue
+
+            if sed -E 's/[[:space:]]+#.*$//' "$file" \
+               | grep -vE '^[[:space:]]*#' \
+               | grep -qP '[\x{4e00}-\x{9fff}]'; then
+              echo "::error::$file contains CJK outside comments; keep CI logs in english"
+              sed -E 's/[[:space:]]+#.*$//' "$file" | grep -vE '^[[:space:]]*#' | grep -nP '[\x{4e00}-\x{9fff}]'
+              fail=1
+            fi
+
+            if grep -nE '^[[:space:]]*(-[[:space:]]*)?name:.*#' "$file" > /dev/null; then
+              echo "::error::$file has '#' inside a name: (GitHub treats it as a comment and truncates it)"
+              grep -nE '^[[:space:]]*(-[[:space:]]*)?name:.*#' "$file"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "workflow files look good"
+
   rust:
-    name: src-tauri（fmt + clippy + test）
+    name: src-tauri (fmt, clippy, test)
     needs: [frontend]
     runs-on: ubuntu-latest
     steps:
@@ -56,12 +85,12 @@ jobs:
       # ⚠️ 编译只需要「有个同名的文件」；**真正的 sidecar 由 release.yaml
       # 从 core release 下载并校验 sha256**（见 ai-docs/03-build-and-sidecar.md § 2.1）。
       # 这里放占位文件是为了让检查不必依赖 core 已经发版。
-      - name: 放一个占位 sidecar（仅为通过编译）
+      - name: drop a placeholder sidecar (compile only)
         run: |
           mkdir -p src-tauri/binaries
           : > "src-tauri/binaries/burrow-$(rustc --print host-tuple)"
 
-      - name: Linux 系统依赖（WebKitGTK 等）
+      - name: Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
@@ -76,16 +105,16 @@ jobs:
       - name: test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: 断言「没有 updater 相关依赖与配置」（验收 #8 / #11）
+      - name: assert there is no updater dependency or config
         run: |
           set -euo pipefail
           if grep -riE 'updater' src-tauri/Cargo.toml src-tauri/tauri.conf.json src/ 2>/dev/null; then
-            echo "::error::桌面端不做自更新：出现了 updater 相关的东西"
+            echo "::error::the desktop app has no self-update: an updater reference was found"
             exit 1
           fi
-          echo "没有 updater 依赖与配置 ✅"
+          echo "no updater dependency or config"
 
-      - name: 断言版本号三处一致
+      - name: assert the version matches in all three files
         run: |
           set -euo pipefail
           pkg=$(node -p "require('./package.json').version")
@@ -93,4 +122,4 @@ jobs:
           cargo_ver=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
           echo "package.json=$pkg tauri.conf.json=$conf Cargo.toml=$cargo_ver"
           [ "$pkg" = "$conf" ] && [ "$pkg" = "$cargo_ver" ] || {
-            echo "::error::版本号不一致（唯一来源是 package.json，用 pnpm version:bump 改）"; exit 1; }
+            echo "::error::version mismatch (package.json is the single source; use pnpm version:bump)"; exit 1; }

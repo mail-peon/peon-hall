@@ -6,6 +6,10 @@
 #
 # 没有 push / pull_request / workflow_dispatch 入口：检查发生在发版那一刻。
 # 失败时**不要移动 tag** —— 修好之后从 Actions 页面重跑失败的 job 即可。
+#
+# ⚠️ 除注释外**不要写中文**（含 job/step 的 name 与 echo 文案）。
+# ⚠️ name 里不要出现 `#`：GitHub 会把它当注释，后面的字就没了
+#    （踩过：`断言「没有 updater 相关依赖与配置」（验收 #8 / #11）` 只显示到「验收」）。
 name: release
 
 on:
@@ -17,11 +21,11 @@ permissions:
 
 jobs:
   checks:
-    name: 发版前检查
+    name: pre-release checks
     uses: ./.github/workflows/ci.yaml
 
   build:
-    name: 打包（${{ matrix.target }}）
+    name: bundle (${{ matrix.target }})
     needs: [checks]
     strategy:
       fail-fast: false
@@ -40,14 +44,14 @@ jobs:
       - uses: actions/checkout@v4
 
       # 早失败：别等到打完包才发现 tag 与版本号不一致
-      - name: tag 必须等于 package.json 的版本
+      - name: tag must match package.json
         shell: bash
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
           version="$(node -p "require('./package.json').version")"
           echo "tag=$tag package.json=$version"
-          [ "$tag" = "$version" ] || { echo "::error::tag 与 package.json 不一致"; exit 1; }
+          [ "$tag" = "$version" ] || { echo "::error::tag does not match package.json"; exit 1; }
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -57,7 +61,7 @@ jobs:
           workspaces: src-tauri -> target
           key: ${{ matrix.target }}
 
-      - name: Linux 系统依赖
+      - name: Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -74,13 +78,13 @@ jobs:
 
       # 取 core 二进制：下载 + **校验 sha256** + 重命名成 Tauri 要的名字。
       # ⚠️ 这一步是供应链上最便宜的一道闸：安装包里的核心二进制被换掉 = 后门。
-      - name: 取并校验 core 二进制
+      - name: fetch and verify the core binary
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/fetch-sidecar.sh "" "${{ matrix.target }}"
 
-      - name: 断言 sidecar 存在（否则打的包里没有中继）
+      - name: assert the sidecar is present
         shell: bash
         run: |
           set -euo pipefail
@@ -100,19 +104,19 @@ jobs:
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
 
-      - name: 在 job summary 里写清捆绑的 core 版本
+      - name: note the bundled core version in the job summary
         shell: bash
         run: |
           set -euo pipefail
           core="$(tr -d '[:space:]' < core-version.txt)"
-          echo "本安装包捆绑 core $core" >> "$GITHUB_STEP_SUMMARY"
+          echo "This installer bundles core $core" >> "$GITHUB_STEP_SUMMARY"
 
   verify-no-updater-artifacts:
-    name: 断言没有更新产物
+    name: verify there are no updater artifacts
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - name: release 里不该有 .sig / latest.json
+      - name: the release must not contain .sig or latest.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -120,7 +124,7 @@ jobs:
           files="$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name')"
           echo "$files"
           if echo "$files" | grep -Eq '\.sig$|latest\.json$'; then
-            echo "::error::桌面端不做自更新，release 里不该有 .sig / latest.json"
+            echo "::error::no self-update on desktop: the release must not contain .sig or latest.json"
             exit 1
           fi
-          echo "没有更新产物 ✅"
+          echo "no updater artifacts"
