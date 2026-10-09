@@ -9,7 +9,10 @@
 
 ---
 
-## 1. 依赖方式：`peon-burrow-ipc` 用 **git 依赖 + tag 钉版**
+## 1. 依赖方式：`peon-burrow-ipc`（发布后走 crates.io 版本依赖）
+
+> 过渡期（首次发布前）用 git 依赖 + tag 钉版；**发布之后改成版本依赖**（`peon-burrow-ipc = "0.1"`），
+> 不再需要锁 commit（[`../../peon-burrow/ai-docs/decisions/adr-0009-crates-io-publishing.md`](../../peon-burrow/ai-docs/decisions/adr-0009-crates-io-publishing.md) § 6）。
 
 ```toml
 # peon-hall/src-tauri/Cargo.toml
@@ -112,6 +115,9 @@ pub async fn request(req: Request) -> Result<Response, ControlError> {
   "lastExitCode": 4
 }
 ```
+
+> ⚠️ 这段 JSON 的形状由 **`peon-burrow-ipc-types::ServiceStatus`** 定义（唯一真相）；
+> `status` 命令返回的是 `StatusReport { process, service }` —— 界面**不要自己拼字段**（丙2/丁4）。
 
 ⚠️ `restartPolicyConfigured` 一定要显示（诊断里）：它是「服务崩了能不能自己回来」的唯一信号，
 而它**很容易在安装时漏配**（peon-burrow 仓库 `ai-docs/service-lifecycle.md § 3` 第 9 步）。

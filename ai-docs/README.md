@@ -33,7 +33,7 @@
 | 形态 | Tauri 2 应用，服务安装器 | `ai-docs/decisions/adr-0006-desktop-installer.md` |
 | 自更新 | **不做** | 同上 § Q5 |
 | 服务注册逻辑 | **不在本仓库** | 同上 § Q2 |
-| 控制面协议 | core 的 `peon-burrow-ipc` crate（git 依赖 + tag 钉版） | `ai-docs/decisions/adr-0001-two-repos.md` § 决策 3 |
+| 控制面协议 | core 的 `peon-burrow-ipc-types`（类型，契约）与 `peon-burrow-ipc`（传输/客户端），git 依赖 + tag 钉版 | `ai-docs/decisions/adr-0001-two-repos.md` § 决策 3 |
 | 提权 | 提权 spawn core 的 `service` 子命令 | `ai-docs/decisions/adr-0006-desktop-installer.md` § Q3 |
 
 ---
