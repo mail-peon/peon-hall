@@ -96,6 +96,10 @@ jobs:
       contents: write
 ```
 
+> ⚠️ **`ci.yaml` 没有自己的触发**（`on: workflow_call`）：本仓库唯一的自动化入口就是
+> `release.yaml`，而且**只吃 `v*.*.*` tag**（没有 `push` / `pull_request` / `workflow_dispatch`）。
+> 也就是说检查发生在发版那一刻。失败时**不要移动 tag** —— 从 Actions 页面重跑失败的 job 即可。
+
 每个 matrix leg 的步骤：
 
 | # | 步骤 | 关键点 |

@@ -1,10 +1,12 @@
+# 被 release.yaml 调用的**可复用工作流**（`workflow_call`）。
+#
+# ⚠️ 这里刻意**没有** push / pull_request 触发：本仓库只有一个自动化入口
+# —— `.github/workflows/release.yaml`（只吃 `v*.*.*` tag）。
+# 也就是说：检查发生在发版那一刻，而不是每次推送。
 name: ci
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
@@ -52,9 +54,9 @@ jobs:
           name: dist
           path: dist
 
-      # ⚠️ 编译只需要「有个同名的文件」；**真正的 sidecar 由 release 工作流
+      # ⚠️ 编译只需要「有个同名的文件」；**真正的 sidecar 由 release.yaml
       # 从 core release 下载并校验 sha256**（见 ai-docs/03-build-and-sidecar.md § 2.1）。
-      # 这里放占位文件是为了让 CI 不必依赖 core 已经发版。
+      # 这里放占位文件是为了让检查不必依赖 core 已经发版。
       - name: 放一个占位 sidecar（仅为通过编译）
         run: |
           mkdir -p src-tauri/binaries

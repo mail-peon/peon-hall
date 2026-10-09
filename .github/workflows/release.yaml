@@ -1,10 +1,16 @@
+# **本仓库唯一的自动化入口**：只由 `v*.*.*` tag 触发。
+#
+#   1) checks —— 复用 ci.yaml（前端 typecheck/build/类型对拍 + src-tauri fmt/clippy/test + 两条断言）
+#   2) build  —— 四个 target 出安装包，每个都先取 core 二进制并**校验 sha256**
+#   3) verify —— 断言 release 里没有更新产物（桌面端不做自更新）
+#
+# 没有 push / pull_request / workflow_dispatch 入口：检查发生在发版那一刻。
+# 失败时**不要移动 tag** —— 修好之后从 Actions 页面重跑失败的 job 即可。
 name: release
 
 on:
   push:
-    # 唯一触发点。与 core 仓库一致：各自仓库各自用 v*.*.*
     tags: ['v*.*.*']
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -73,7 +79,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/fetch-sidecar.sh "${{ inputs.core_ref }}" "${{ matrix.target }}"
+        run: ./scripts/fetch-sidecar.sh "" "${{ matrix.target }}"
 
       - name: 断言 sidecar 存在（否则打的包里没有中继）
         shell: bash
@@ -95,7 +101,7 @@ jobs:
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
 
-      - name: release notes 里写清捆绑的 core 版本
+      - name: 在 job summary 里写清捆绑的 core 版本
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +113,6 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: release 里不该有 .sig / latest.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
