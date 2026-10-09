@@ -5,6 +5,9 @@
 // 为什么要它：中继是命令行程序，出了问题（装服务失败、端口被占）真正的原因都在它的输出里。
 // 界面只给一句「失败了」时用户只能猜 —— 抽屉把原始输出留在手边，可复制、可贴给维护者。
 //
+// **不自动弹出**：只在用户点底部那条 footer 时展开（轮询、安装、卸载都不打扰）。
+// 事件里的 origin（user/auto）留着做元数据，将来要按来源过滤就靠它。
+//
 // 参考 antfu/node-modules-inspector：把 CLI 输出当一等公民展示。
 // `@xterm/xterm` 渲染（等宽 + ANSI 颜色），`@xterm/addon-fit` 跟随容器尺寸。
 
@@ -33,9 +36,6 @@ function write(event: CommandEvent) {
   switch (event.kind) {
     case 'command':
       term.write(`\r\n\x1b[36m$ ${event.line}\x1b[0m\r\n`)
-      // **只在用户主动操作时**弹出来：状态轮询每 10 秒一次，
-      // 每次都弹会把界面搅得没法用（而且它没什么可看的）。
-      if (event.origin === 'user' && !props.open) emit('toggle', true)
       break
     case 'stderr':
       term.write(`\x1b[31m${event.line}\x1b[0m\r\n`)
