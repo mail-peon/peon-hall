@@ -205,7 +205,11 @@ pub fn parse_status(stdout: &str) -> Result<ServiceStatus, SidecarError> {
 pub fn parse_action(output: &SidecarOutput) -> Result<Option<serde_json::Value>, SidecarError> {
     if output.code != 0 {
         let message = if output.stderr.trim().is_empty() {
-            format!("中继返回退出码 {}（没有更多信息）", output.code)
+            // 提权路径拿不到子进程输出时会是这个形态；告诉用户怎么看到真正的原因
+            format!(
+                "中继返回退出码 {}，但它没有输出。在终端里手动跑一次同样的命令能看到完整原因",
+                output.code
+            )
         } else {
             output.stderr.trim().to_owned()
         };
