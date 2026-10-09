@@ -125,14 +125,6 @@ watch(
 
 <template>
   <footer class="drawer" data-testid="command-drawer">
-    <!-- 毛玻璃遮罩：展开时压住底下的内容（点它收起），让终端成为焦点 -->
-    <div
-      v-if="open"
-      class="drawer-scrim"
-      data-testid="command-drawer-scrim"
-      @click="emit('toggle', false)"
-    />
-
     <!-- 面板：高度 0 ↔ 90%，视觉上就是从 footer 由下往上抽出来 -->
     <section class="drawer-panel" :class="{ 'drawer-panel-open': open }" :aria-hidden="!open">
       <header class="drawer-header">
@@ -176,14 +168,13 @@ watch(
 
 <style scoped>
 .drawer {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  /* ⚠️ **不是** fixed：它是内容区的兄弟节点，占自己的一份高度 ——
+     fixed 会把底部内容压在下面（早期版本靠 padding 补偿，窗口一窄就不够）。 */
   z-index: 30;
   display: flex;
+  flex: none;
   flex-direction: column;
-  /* 整块面板是毛玻璃：终端文字浮在模糊的界面之上，而不是「玻璃上贴一块黑板」 */
+  /* 整块面板是毛玻璃 */
   background: rgb(11 15 20 / 72%);
   backdrop-filter: blur(18px) saturate(130%);
   border-top: 1px solid rgb(255 255 255 / 8%);
@@ -198,17 +189,9 @@ watch(
 }
 
 .drawer-panel-open {
-  /* 100% 减掉常驻 footer 条的高度（别把它顶出屏幕） */
-  height: calc(100vh - 32px);
-}
-
-.drawer-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: rgb(3 7 12 / 45%);
-  backdrop-filter: blur(10px) saturate(120%);
-  cursor: pointer;
+  /* 展开后占视口的大部分，但内容区仍有 30vh 的下限（见 App.vue 的 .shell__body） ——
+     这样「看输出」和「看状态」能同时在屏幕上，谁也不会被谁盖住。 */
+  height: 62vh;
 }
 
 .drawer-header {

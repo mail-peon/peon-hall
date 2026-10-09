@@ -110,11 +110,6 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
-/* 抽屉打开时不做布局跳动：给滚动容器预留槽位 */
-.app {
-  scrollbar-gutter: stable;
-}
-
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
