@@ -91,7 +91,16 @@ onMounted(async () => {
     fontSize: 12,
     scrollback: 5000,
     // 终端自身透明：毛玻璃由外层 .drawer 负责，这样整块面板才是同一个材质
-    theme: { background: 'rgba(0, 0, 0, 0)', foreground: '#e5e7eb', cursor: '#0b0f14' },
+    // 终端自身透明（毛玻璃由外层 .drawer 负责）；
+    // 滚动条颜色走主题 —— xterm 6 的滚动条是它自己画的，CSS 伪元素对它无效
+    theme: {
+      background: 'rgba(0, 0, 0, 0)',
+      foreground: '#e5e7eb',
+      cursor: '#0b0f14',
+      scrollbarSliderBackground: 'rgba(255, 255, 255, 0.16)',
+      scrollbarSliderHoverBackground: 'rgba(255, 255, 255, 0.3)',
+      scrollbarSliderActiveBackground: 'rgba(255, 255, 255, 0.45)',
+    },
   })
   term.loadAddon(fitAddon)
   term.open(host.value!)
@@ -263,5 +272,21 @@ watch(
   margin-left: auto;
   color: #4b5563;
   font-size: 11px;
+}
+</style>
+
+<!--
+  ⚠️ 这里刻意**不加 scoped**：`.xterm-scrollable-element` 是 xterm 运行时插进 DOM 的，
+  不会带上 SFC 的 data-v 属性，scoped 样式匹配不到它。
+-->
+<style>
+/* 终端滚动条：xterm 6 自绘（VS Code 那套），宽度是 JS 写的行内样式 —— 只能 !important。
+   颜色不在这里管，走上面的主题选项（xterm 提供的唯一滚动条 API）。 */
+.drawer .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: 10px !important;
+}
+
+.drawer .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  border-radius: 9999px;
 }
 </style>

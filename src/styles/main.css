@@ -134,18 +134,5 @@ body {
   background: transparent;
 }
 
-/* 命令抽屉是深色毛玻璃，滚动条要跟着换一套颜色 */
-.xterm-viewport::-webkit-scrollbar {
-  width: 10px;
-}
-
-.xterm-viewport::-webkit-scrollbar-thumb {
-  background-color: rgb(255 255 255 / 18%);
-  border: 3px solid transparent;
-  background-clip: padding-box;
-  border-radius: 9999px;
-}
-
-.xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(255 255 255 / 32%);
-}
+/* 终端滚动条由 xterm 自绘（见 CommandDrawer.vue）：颜色走主题选项、宽度走 !important，
+   用 ::-webkit-scrollbar 是无效的。 */
