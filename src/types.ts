@@ -128,3 +128,15 @@ export interface DoctorReport {
 
 /** 五个操作。 */
 export type ServiceActionName = 'install' | 'uninstall' | 'start' | 'stop' | 'restart'
+
+/** 命令抽屉里一行内容的来源。 */
+export type CommandEventKind = 'command' | 'stdout' | 'stderr' | 'exit'
+
+/** 中继命令的一行事件（Rust 侧 `commands::CommandEvent`）。 */
+export interface CommandEvent {
+  /** 一次调用的序号：同一次动作的行共用一个 id。 */
+  id: number
+  kind: CommandEventKind
+  /** 内容；`exit` 时是退出码。 */
+  line: string
+}

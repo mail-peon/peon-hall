@@ -20,6 +20,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Windows 上「不要窗口」的创建标志（`CREATE_NO_WINDOW`）。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 use crate::sidecar::SidecarOutput;
 
 /// 提权结果。
@@ -110,7 +114,8 @@ pub fn elevation_command(files: &ElevationFiles) -> ElevationCommand {
         // 1223 = ERROR_CANCELLED：用固定退出码区分「用户点了否」与「命令真的失败了」
         let script = files.script.display().to_string().replace('\'', "''");
         let command = format!(
-            "try {{ $p = Start-Process -FilePath $env:ComSpec -ArgumentList '/c','{script}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode }} catch {{ Write-Error $_.Exception.Message; exit 1223 }}"
+            // `-WindowStyle Hidden`：提权出来的 cmd 窗口不该在用户眼前闪
+            "try {{ $p = Start-Process -FilePath $env:ComSpec -ArgumentList '/c','{script}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode }} catch {{ Write-Error $_.Exception.Message; exit 1223 }}"
         );
         ElevationCommand {
             program: "powershell".to_owned(),
@@ -192,8 +197,17 @@ pub fn run(exe: &Path, args: &[String]) -> Result<ElevationOutcome, String> {
 #[cfg(windows)]
 fn run_windows(files: &ElevationFiles) -> Result<(i32, String, String), String> {
     let command = elevation_command(files);
-    let output = Command::new(&command.program)
-        .args(&command.args)
+    let mut child = Command::new(&command.program);
+    child.args(&command.args);
+
+    // ⚠️ 父进程 PowerShell 也不许弹窗口：它只是个提权跳板，用户该看到的只有 UAC
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        child.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = child
         .output()
         .map_err(|error| format!("起不了提权进程 {}：{error}", command.program))?;
 
@@ -344,6 +358,10 @@ mod tests {
         let script = command.args.last().expect("脚本");
         assert!(script.contains("-Verb RunAs"), "必须走 UAC：{script}");
         assert!(script.contains("-Wait"), "要等它跑完：{script}");
+        assert!(
+            script.contains("-WindowStyle Hidden"),
+            "提权出来的窗口要隐藏：{script}"
+        );
         assert!(script.contains("exit 1223"), "取消要有固定退出码：{script}");
         assert!(
             script.contains("ComSpec"),

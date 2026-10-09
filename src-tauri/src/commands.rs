@@ -6,7 +6,11 @@
 use peon_burrow_ipc_types::{Request, ServiceLevel, ServiceStatus};
 use serde::Serialize;
 use serde_json::Value;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use tauri::AppHandle;
+use tauri::Emitter;
 
 use crate::control;
 use crate::discovery::{self, Discovery};
@@ -136,7 +140,7 @@ pub struct Heartbeat {
 pub async fn snapshot(app: AppHandle) -> Result<Snapshot, CommandError> {
     let heart = heartbeat().await?;
     // 服务状态查不到不该让整个快照失败：卡片显示「未知」比整页空白好
-    let service = service_status()
+    let service = service_status(app.clone())
         .await
         .unwrap_or_else(|_| ServiceStatus::not_installed("peon-burrow"));
 
@@ -205,17 +209,113 @@ pub async fn heartbeat() -> Result<Heartbeat, CommandError> {
     })
 }
 
+/// 命令抽屉的事件名（前端 `listen` 这个）。
+pub const COMMAND_EVENT: &str = "peon-hall://command";
+
+/// 发给前端命令抽屉的一行。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandEvent {
+    /// 本次调用的序号（前端按它分组，一次动作一个号）。
+    pub id: u64,
+    /// `command`（要跑的命令行）/ `stdout` / `stderr` / `exit`。
+    pub kind: &'static str,
+    /// 内容；`exit` 时是退出码。
+    pub line: String,
+}
+
+/// 下一条命令的序号。
+fn next_command_id() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// 往抽屉里写一行（发不出去就算了：抽屉是给人看的，不该影响命令本身）。
+fn emit_command(app: &AppHandle, id: u64, kind: &'static str, line: impl Into<String>) {
+    let _ = app.emit(
+        COMMAND_EVENT,
+        CommandEvent {
+            id,
+            kind,
+            line: line.into(),
+        },
+    );
+}
+
+/// 跑一次中继命令，并把「命令行 + 每行输出 + 退出码」**实时**发给抽屉。
+///
+/// 输入（要跑什么）也是展示的一部分：界面上只看到输出、看不到命令，排查时很被动。
+fn run_with_events(
+    app: &AppHandle,
+    exe: &Path,
+    args: &[String],
+) -> Result<sidecar::SidecarOutput, sidecar::SidecarError> {
+    let id = next_command_id();
+    emit_command(app, id, "command", sidecar::display_line(exe, args));
+
+    let result = sidecar::run_streaming(exe, args, |kind, line| {
+        let kind = match kind {
+            sidecar::StreamKind::Stdout => "stdout",
+            sidecar::StreamKind::Stderr => "stderr",
+        };
+        emit_command(app, id, kind, line);
+    });
+
+    match &result {
+        Ok(output) => emit_command(app, id, "exit", output.code.to_string()),
+        Err(error) => emit_command(app, id, "stderr", error.to_string()),
+    }
+    result
+}
+
+/// 跑一次**提权**命令，同样把命令行与输出写进抽屉。
+///
+/// ⚠️ 提权子进程的流在它自己的窗口里（Windows 上是临时文件），父进程拿不到**实时**输出 ——
+/// 所以这里只能「先记命令行，跑完再补输出」。取消也会记一行，免得界面看着像卡住了。
+fn run_elevated_with_events(
+    app: &AppHandle,
+    exe: &Path,
+    args: &[String],
+) -> Result<ElevationOutcome, String> {
+    let id = next_command_id();
+    emit_command(app, id, "command", sidecar::display_line(exe, args));
+
+    let outcome = elevate::run(exe, args);
+
+    match &outcome {
+        Ok(ElevationOutcome::Ran(output)) => {
+            for line in output.stdout.lines() {
+                emit_command(app, id, "stdout", line.to_owned());
+            }
+            for line in output.stderr.lines() {
+                emit_command(app, id, "stderr", line.to_owned());
+            }
+            emit_command(app, id, "exit", output.code.to_string());
+        }
+        Ok(ElevationOutcome::Cancelled) => {
+            emit_command(app, id, "stderr", "已取消提权（用户点了「否」）");
+        }
+        Err(error) => emit_command(app, id, "stderr", error.clone()),
+    }
+
+    outcome
+}
+
 /// 问一次服务管理器（**重**：一次进程调用；界面每 5 次轮询查一次）。
 #[tauri::command]
-pub async fn service_status() -> Result<ServiceStatus, CommandError> {
+pub async fn service_status(app: AppHandle) -> Result<ServiceStatus, CommandError> {
     if !sidecar::present() {
         return Ok(ServiceStatus::not_installed("peon-burrow"));
     }
 
-    let output = tauri::async_runtime::spawn_blocking(|| sidecar::run(&sidecar::status_args()))
-        .await
-        .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
-        .map_err(CommandError::from_sidecar)?;
+    let exe = sidecar::sidecar_path()
+        .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        run_with_events(&app, &exe, &sidecar::status_args())
+    })
+    .await
+    .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
+    .map_err(CommandError::from_sidecar)?;
 
     sidecar::parse_status(&output.stdout).map_err(CommandError::from_sidecar)
 }
@@ -223,6 +323,7 @@ pub async fn service_status() -> Result<ServiceStatus, CommandError> {
 /// 五个操作：安装 / 卸载 / 启动 / 停止 / 重启。
 #[tauri::command]
 pub async fn service_action(
+    app: AppHandle,
     action: String,
     mode: Option<String>,
     autostart: Option<bool>,
@@ -253,7 +354,7 @@ pub async fn service_action(
     let level = match mode.as_deref() {
         Some("system") => ServiceLevel::System,
         Some("user") => ServiceLevel::User,
-        _ => current_level().await,
+        _ => current_level(&app).await,
     };
     let autostart = autostart.unwrap_or(true);
     let args = sidecar::action_args(action, level, autostart);
@@ -261,10 +362,12 @@ pub async fn service_action(
     let output = if sidecar::needs_elevation(action, level) {
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
-        let outcome = tauri::async_runtime::spawn_blocking(move || elevate::run(&exe, &args))
-            .await
-            .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
-            .map_err(|error| CommandError::new(ErrorCode::Failed, error))?;
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            run_elevated_with_events(&app, &exe, &args)
+        })
+        .await
+        .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
+        .map_err(|error| CommandError::new(ErrorCode::Failed, error))?;
 
         match outcome {
             ElevationOutcome::Cancelled => {
@@ -277,8 +380,9 @@ pub async fn service_action(
             ElevationOutcome::Ran(output) => output,
         }
     } else {
-        let args = args.clone();
-        tauri::async_runtime::spawn_blocking(move || sidecar::run(&args))
+        let exe = sidecar::sidecar_path()
+            .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
+        tauri::async_runtime::spawn_blocking(move || run_with_events(&app, &exe, &args.clone()))
             .await
             .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
             .map_err(CommandError::from_sidecar)?
@@ -290,7 +394,7 @@ pub async fn service_action(
 
 /// 开机自启开关。
 #[tauri::command]
-pub async fn set_autostart(on: bool) -> Result<ActionResult, CommandError> {
+pub async fn set_autostart(app: AppHandle, on: bool) -> Result<ActionResult, CommandError> {
     if !sidecar::present() {
         return Err(CommandError::new(
             ErrorCode::SidecarMissing,
@@ -298,16 +402,18 @@ pub async fn set_autostart(on: bool) -> Result<ActionResult, CommandError> {
         ));
     }
 
-    let level = current_level().await;
+    let level = current_level(&app).await;
     let args = sidecar::autostart_args(on);
 
     let output = if sidecar::needs_elevation(ServiceAction::Start, level) {
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
-        match tauri::async_runtime::spawn_blocking(move || elevate::run(&exe, &args))
-            .await
-            .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
-            .map_err(|error| CommandError::new(ErrorCode::Failed, error))?
+        match tauri::async_runtime::spawn_blocking(move || {
+            run_elevated_with_events(&app, &exe, &args)
+        })
+        .await
+        .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
+        .map_err(|error| CommandError::new(ErrorCode::Failed, error))?
         {
             ElevationOutcome::Cancelled => {
                 return Ok(ActionResult::cancelled("已取消（需要管理员权限）"));
@@ -315,7 +421,9 @@ pub async fn set_autostart(on: bool) -> Result<ActionResult, CommandError> {
             ElevationOutcome::Ran(output) => output,
         }
     } else {
-        tauri::async_runtime::spawn_blocking(move || sidecar::run(&args))
+        let exe = sidecar::sidecar_path()
+            .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
+        tauri::async_runtime::spawn_blocking(move || run_with_events(&app, &exe, &args))
             .await
             .map_err(|error| CommandError::new(ErrorCode::Failed, error.to_string()))?
             .map_err(CommandError::from_sidecar)?
@@ -424,8 +532,8 @@ pub async fn open_logs() -> Result<String, CommandError> {
 }
 
 /// 当前安装级别（没装则按配置里的 `[service] mode`，默认用户级）。
-async fn current_level() -> ServiceLevel {
-    match service_status().await {
+async fn current_level(app: &AppHandle) -> ServiceLevel {
+    match service_status(app.clone()).await {
         Ok(status) => status.level.unwrap_or(ServiceLevel::User),
         Err(_) => ServiceLevel::User,
     }

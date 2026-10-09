@@ -2,13 +2,16 @@
 // 单页：提示条 + 状态卡片 + 五个操作 + 信息行 + 高级（系统服务）+ 诊断（§ 2~§ 6）。
 // 所有状态与交互逻辑都在 useRelayState 里，这里只做布局。
 
+import { ref } from 'vue'
+
 import ActionBar from './components/ActionBar.vue'
 import AutostartSwitch from './components/AutostartSwitch.vue'
+import CommandDrawer from './components/CommandDrawer.vue'
 import DoctorPanel from './components/DoctorPanel.vue'
 import RelayAddress from './components/RelayAddress.vue'
 import StatusCard from './components/StatusCard.vue'
 import { useRelayState } from './composables/useRelayState'
-import { advanced, info as infoText } from './locales/zh-CN'
+import { advanced, drawer as drawerText, info as infoText } from './locales/zh-CN'
 
 const {
   phaseTitle,
@@ -45,6 +48,9 @@ const {
   openConfigDir,
   openLogsDir,
 } = useRelayState()
+
+// 命令抽屉：默认收起，避免挡住主操作
+const drawerOpen = ref(false)
 </script>
 
 <template>
@@ -117,6 +123,18 @@ const {
       </span>
     </details>
 
+    <!-- 命令行：中继的输出原文都在抽屉里（排查时最有用） -->
+    <div class="mt-3 flex justify-end">
+      <button
+        type="button"
+        class="btn-secondary"
+        data-testid="command-drawer-toggle"
+        @click="drawerOpen = true"
+      >
+        {{ drawerText.open }}
+      </button>
+    </div>
+
     <DoctorPanel
       :open="doctorOpen"
       :report="doctorReport"
@@ -129,6 +147,8 @@ const {
       @open-config="openConfigDir"
       @open-logs="openLogsDir"
     />
+
+    <CommandDrawer :open="drawerOpen" @toggle="drawerOpen = $event" />
   </div>
 </template>
 

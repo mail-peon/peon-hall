@@ -212,3 +212,17 @@ export const misc = {
   noAddress: '还没读到扩展地址',
   autostartDisabled: '把中继装成服务后才能设置开机自启',
 }
+
+/** 命令抽屉（CLI 输出）。 */
+export const drawer = {
+  title: '命令行',
+  hintOpen: '点标题收起',
+  hintClosed: '点标题展开',
+  clear: '清空',
+  copy: '复制',
+  close: '收起',
+  /** 打开抽屉的按钮。 */
+  open: '查看命令行输出',
+  /** 空抽屉时的提示。 */
+  empty: '还没有跑过命令 —— 装服务、启停、开关自启时，这里会显示跑了什么、返回了什么',
+}

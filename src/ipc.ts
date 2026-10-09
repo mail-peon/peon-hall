@@ -3,10 +3,12 @@
 // 前端只做渲染与交互 —— 见 ai-docs/00-overview.md § 5「职责边界」。
 
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 
 import type {
   ActionResult,
+  CommandEvent,
   AppInfo,
   CommandError,
   DoctorReport,
@@ -91,4 +93,16 @@ export function openLogs(): Promise<string> {
 /** 复制到剪贴板（capabilities 里只为它开了权限）。 */
 export function copyText(text: string): Promise<void> {
   return writeText(text)
+}
+
+/** Rust 侧发命令行的通道名（与 `commands::COMMAND_EVENT` 必须一致）。 */
+export const COMMAND_EVENT = 'peon-hall://command'
+
+/**
+ * 订阅「中继命令的一行」。
+ *
+ * 返回取消订阅的函数 —— 组件卸载时必须调，否则热重载会叠出多份监听。
+ */
+export async function onCommandEvent(handler: (event: CommandEvent) => void): Promise<() => void> {
+  return listen<CommandEvent>(COMMAND_EVENT, (event) => handler(event.payload))
 }
