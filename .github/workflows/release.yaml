@@ -1,0 +1,122 @@
+name: release
+
+on:
+  push:
+    # 唯一触发点。与 core 仓库一致：各自仓库各自用 v*.*.*
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    name: 发版前检查
+    uses: ./.github/workflows/ci.yaml
+
+  build:
+    name: 打包（${{ matrix.target }}）
+    needs: [checks]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 早失败：别等到打完包才发现 tag 与版本号不一致
+      - name: tag 必须等于 package.json 的版本
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          echo "tag=$tag package.json=$version"
+          [ "$tag" = "$version" ] || { echo "::error::tag 与 package.json 不一致"; exit 1; }
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Linux 系统依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+                                  librsvg2-dev patchelf libxslt1.1
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # 取 core 二进制：下载 + **校验 sha256** + 重命名成 Tauri 要的名字。
+      # ⚠️ 这一步是供应链上最便宜的一道闸：安装包里的核心二进制被换掉 = 后门。
+      - name: 取并校验 core 二进制
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/fetch-sidecar.sh "${{ inputs.core_ref }}" "${{ matrix.target }}"
+
+      - name: 断言 sidecar 存在（否则打的包里没有中继）
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix=""
+          case "${{ matrix.target }}" in *windows*) suffix=".exe" ;; esac
+          ls -l "src-tauri/binaries/burrow-${{ matrix.target }}${suffix}"
+
+      # ⚠️ 不设 includeUpdaterJson、不给 TAURI_SIGNING_PRIVATE_KEY：
+      # 桌面端不做自更新（需求 G7），那两样只会制造「为什么没有 latest.json」的困惑。
+      - uses: tauri-apps/tauri-action@v0.5.20
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseDraft: false
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }}
+
+      - name: release notes 里写清捆绑的 core 版本
+        shell: bash
+        run: |
+          set -euo pipefail
+          core="$(tr -d '[:space:]' < core-version.txt)"
+          echo "本安装包捆绑 core $core" >> "$GITHUB_STEP_SUMMARY"
+
+  verify-no-updater-artifacts:
+    name: 断言没有更新产物
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: release 里不该有 .sig / latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          files="$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name')"
+          echo "$files"
+          if echo "$files" | grep -Eq '\.sig$|latest\.json$'; then
+            echo "::error::桌面端不做自更新，release 里不该有 .sig / latest.json"
+            exit 1
+          fi
+          echo "没有更新产物 ✅"

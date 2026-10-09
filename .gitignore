@@ -1,38 +1,15 @@
-# Node / 前端
+# 前端 / Node
 node_modules/
 dist/
-*.tsbuildinfo
-.vite/
-coverage/
+*.local
+.pnpm-store/
 
-# Tauri / Rust
+# Rust / Tauri
 src-tauri/target/
 src-tauri/gen/
+
+# 打包时放进去的 core 二进制：**不入库**（发版时从 release 下载并校验，见 ai-docs/03-build-and-sidecar.md § 2）
 src-tauri/binaries/
-**/target/
 
-# 打包产物
-release/
-*.msi
-*.msix
-*.exe
-*.dmg
-*.AppImage
-*.deb
-*.rpm
-*.pdb
-*.dSYM/
-
-# 本地临时
-*.log
-logs/
+# 图标源文件与临时产物
 .scratch/
-*.local
-
-# 编辑器 / 系统
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
