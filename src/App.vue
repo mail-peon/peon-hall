@@ -11,7 +11,7 @@ import DoctorPanel from './components/DoctorPanel.vue'
 import RelayAddress from './components/RelayAddress.vue'
 import StatusCard from './components/StatusCard.vue'
 import { useRelayState } from './composables/useRelayState'
-import { advanced, drawer as drawerText, info as infoText } from './locales/zh-CN'
+import { advanced, info as infoText } from './locales/zh-CN'
 
 const {
   phaseTitle,
@@ -54,7 +54,7 @@ const drawerOpen = ref(false)
 </script>
 
 <template>
-  <div class="app overflow-y-auto">
+  <div class="app app-with-footer overflow-y-auto">
     <!-- 提示条：黄 = 需要知道（提权取消、超时），红 = 出错了（§ 3.1） -->
     <div
       v-if="visibleNotice"
@@ -123,18 +123,6 @@ const drawerOpen = ref(false)
       </span>
     </details>
 
-    <!-- 命令行：中继的输出原文都在抽屉里（排查时最有用） -->
-    <div class="mt-3 flex justify-end">
-      <button
-        type="button"
-        class="btn-secondary"
-        data-testid="command-drawer-toggle"
-        @click="drawerOpen = true"
-      >
-        {{ drawerText.open }}
-      </button>
-    </div>
-
     <DoctorPanel
       :open="doctorOpen"
       :report="doctorReport"
@@ -153,6 +141,11 @@ const drawerOpen = ref(false)
 </template>
 
 <style scoped>
+/* 底部常驻命令 footer 的高度（固定定位，所以内容要自己让开） */
+.app-with-footer {
+  padding-bottom: 40px;
+}
+
 .hint {
   margin: 8px 0 0;
   color: var(--muted);

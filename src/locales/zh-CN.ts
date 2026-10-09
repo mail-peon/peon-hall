@@ -225,4 +225,6 @@ export const drawer = {
   open: '查看命令行输出',
   /** 空抽屉时的提示。 */
   empty: '还没有跑过命令 —— 装服务、启停、开关自启时，这里会显示跑了什么、返回了什么',
+  /** footer 上的行数徽标。 */
+  lines: (count: number) => `${count} 行`,
 }
