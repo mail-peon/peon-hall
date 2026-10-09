@@ -1,0 +1,200 @@
+/* 非原子部分：状态色变量、卡片布局、深色模式。
+   原子类由 UnoCSS 提供（见 uno.config.ts）。
+
+   ⚠️ 四个状态色要同时适配浅色与深色（prefers-color-scheme），
+   并且对比度要够（这是用户唯一会看到的界面）。 */
+
+:root {
+  /* 状态色：正在运行 / 已安装未运行 / 前台运行 / 未安装 */
+  --state-running: #16a34a; /* green-600 */
+  --state-stopped: #dc2626; /* red-600 */
+  --state-foreground: #d97706; /* amber-600 */
+  --state-none: #6b7280; /* gray-500 */
+
+  --bg: #f8fafc;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --notice-warn-bg: #fef3c7;
+  --notice-warn-fg: #92400e;
+  --notice-error-bg: #fee2e2;
+  --notice-error-fg: #991b1b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --state-running: #4ade80;
+    --state-stopped: #f87171;
+    --state-foreground: #fbbf24;
+    --state-none: #9ca3af;
+
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+    --surface: #1e293b;
+    --surface-2: #273449;
+    --notice-warn-bg: #78350f;
+    --notice-warn-fg: #fde68a;
+    --notice-error-bg: #7f1d1d;
+    --notice-error-fg: #fecaca;
+  }
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: 14px;
+  /* 高 DPI 下别让文字发虚 */
+  -webkit-font-smoothing: antialiased;
+  /* 桌面应用：不要选中文本（诊断结果那类要能选，单独放开） */
+  user-select: none;
+}
+
+/* 窗口只有一页，布局用 flex 纵向塞满；诊断展开时允许滚动 */
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.selectable {
+  user-select: text;
+  cursor: text;
+}
+
+/* 状态点：卡片左侧的圆点，颜色来自状态色 */
+.state-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  flex: none;
+}
+
+.state-dot--running {
+  background: var(--state-running);
+}
+.state-dot--stopped {
+  background: var(--state-stopped);
+}
+.state-dot--foreground {
+  background: var(--state-foreground);
+}
+.state-dot--none {
+  background: var(--state-none);
+}
+
+/* 提示条 */
+.notice {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.notice--warn {
+  background: var(--notice-warn-bg);
+  color: var(--notice-warn-fg);
+}
+.notice--error {
+  background: var(--notice-error-bg);
+  color: var(--notice-error-fg);
+}
+
+/* 信息行（标签 + 值 + 可选按钮） */
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  min-height: 24px;
+}
+.info-row__label {
+  color: var(--muted);
+  flex: none;
+  min-width: 68px;
+}
+.info-row__value {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+/* 代码样式的值（地址、路径） */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+/* 转圈：不引组件库，用 CSS 画 */
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  display: inline-block;
+  animation: spin 0.6s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 诊断列表 */
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 260px;
+  padding-right: 4px;
+}
+.check-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 6px;
+  align-items: start;
+  font-size: 13px;
+}
+.check-item__detail {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* 折叠区（系统服务这类高级选项） */
+details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  user-select: none;
+}
+
+/* 让按钮里的图标与文字对齐 */
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
