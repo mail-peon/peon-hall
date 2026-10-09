@@ -3,6 +3,8 @@
 > `mail-peon` IMAP 中继的**服务安装器 GUI**：一个 Tauri 2 桌面应用，
 > 用来显示服务状态、安装/卸载服务、启动/停止服务、开关开机自启、渲染诊断结果。
 
+![peon-hall 概念图：中继的服务安装器 GUI](.github/images/great-hall.png)
+
 它**不含中继逻辑**：中继是另一个仓库里的独立二进制
 （`mail-peon/peon-burrow`），本应用把它当作 sidecar 打包进来，
 并在需要时以提权方式调用它的 `service` 子命令。
