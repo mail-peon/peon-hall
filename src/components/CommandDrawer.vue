@@ -280,13 +280,29 @@ watch(
   不会带上 SFC 的 data-v 属性，scoped 样式匹配不到它。
 -->
 <style>
-/* 终端滚动条：xterm 6 自绘（VS Code 那套），宽度是 JS 写的行内样式 —— 只能 !important。
-   颜色不在这里管，走上面的主题选项（xterm 提供的唯一滚动条 API）。 */
-.drawer .xterm .xterm-scrollable-element > .scrollbar.vertical {
+/* 终端滚动条：xterm 6 自绘（VS Code 那套），宽高都是 JS 写的**行内样式** —— 只能 !important。
+   颜色不在这里管，走上面的主题选项（xterm 提供的唯一滚动条 API）。
+
+   ⚠️ 宽度要覆盖**两处**：外层 `.scrollbar` 与里面的 `.slider` 各自带一个行内 width
+   （实测 DOM：两个都是 `width: 14px`）。只改外层的话，滑块还是 14px，看着「没变」。 */
+.drawer .xterm-scrollable-element > .scrollbar.vertical {
   width: 10px !important;
 }
 
-.drawer .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+.drawer .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: 1px !important;
+  width: 8px !important;
+  border-radius: 9999px;
+}
+
+/* 横向同理（终端很少横向滚动，但保持一致） */
+.drawer .xterm-scrollable-element > .scrollbar.horizontal {
+  height: 10px !important;
+}
+
+.drawer .xterm-scrollable-element > .scrollbar.horizontal > .slider {
+  top: 1px !important;
+  height: 8px !important;
   border-radius: 9999px;
 }
 </style>
