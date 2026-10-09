@@ -1,6 +1,7 @@
 # pnpm 12 起，构建脚本白名单在这里（package.json 的 pnpm.onlyBuiltDependencies 不再生效）。
 # Vite 需要 esbuild 的 postinstall；其余依赖一律不允许跑脚本（供应链最小面）。
 allowBuilds:
+  core-js: false
   esbuild: true
 minimumReleaseAgeExclude:
   - '@tauri-apps/api@2.12.2'

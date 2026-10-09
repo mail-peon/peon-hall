@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 五个操作。可用性矩阵在 useRelayState 里算好，这里只渲染 ——
-// 禁用的按钮一定带 title 说明原因（§ 7：不能只灰掉）。
+// 禁用的按钮一定带 tooltip 说明原因（§ 7：不能只灰掉）。
+
+import { Button as AButton, Space as ASpace, Tooltip as ATooltip } from 'ant-design-vue'
 
 import type { ActionItem } from '../composables/useRelayState'
 
@@ -8,37 +10,37 @@ const props = defineProps<{ items: ActionItem[] }>()
 
 const emit = defineEmits<{ run: [name: ActionItem['name']] }>()
 
-function variantClass(item: ActionItem): string {
-  if (item.disabled) return 'btn-secondary'
-  if (item.variant === 'primary') return 'btn-primary'
-  if (item.variant === 'danger') return 'btn-danger'
-  return 'btn-secondary'
+/** 「安装/启动」是主操作，其余用默认按钮；卸载走 danger。 */
+function buttonType(item: ActionItem): 'primary' | 'default' {
+  return item.variant === 'primary' ? 'primary' : 'default'
 }
 </script>
 
 <template>
-  <!--
-    title 放在外层 span 上：原生 disabled 的按钮在部分浏览器上不弹 tooltip
-    （禁用元素不派发鼠标事件），所以给按钮加 pointer-events-none，让外层接管悬停。
-  -->
-  <div class="flex flex-wrap gap-2">
-    <span
+  <ASpace class="action-bar" :size="8" wrap>
+    <ATooltip
       v-for="item in props.items"
       :key="item.name"
-      class="inline-flex"
-      :class="{ 'cursor-not-allowed': item.disabled }"
-      :title="item.disabled ? item.reason : undefined"
+      :title="item.disabled ? item.reason : ''"
     >
-      <button
-        type="button"
-        :class="[variantClass(item), item.disabled ? 'pointer-events-none' : '']"
-        :disabled="item.disabled"
-        :title="item.disabled ? item.reason : undefined"
-        @click="emit('run', item.name)"
-      >
-        <span v-if="item.busy" class="spinner" />
-        {{ item.label }}
-      </button>
-    </span>
-  </div>
+      <!-- antd 的 Tooltip 需要能接收鼠标事件的子元素：禁用按钮外面包一层 -->
+      <span>
+        <AButton
+          :type="buttonType(item)"
+          :danger="item.variant === 'danger'"
+          :loading="item.busy"
+          :disabled="item.disabled"
+          @click="emit('run', item.name)"
+        >
+          {{ item.label }}
+        </AButton>
+      </span>
+    </ATooltip>
+  </ASpace>
 </template>
+
+<style scoped>
+.action-bar {
+  margin-top: 12px;
+}
+</style>

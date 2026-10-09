@@ -14,6 +14,7 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import { Button as AButton, Space as ASpace } from 'ant-design-vue'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { onCommandEvent } from '../ipc'
@@ -136,13 +137,13 @@ watch(
     <section class="drawer-panel" :class="{ 'drawer-panel-open': open }" :aria-hidden="!open">
       <header class="drawer-header">
         <span class="drawer-title">{{ drawer.title }}</span>
-        <div class="drawer-actions">
-          <button type="button" class="drawer-action" @click="clear">{{ drawer.clear }}</button>
-          <button type="button" class="drawer-action" @click="copy">{{ drawer.copy }}</button>
-          <button type="button" class="drawer-action" @click="emit('toggle', false)">
+        <ASpace :size="4">
+          <AButton size="small" type="text" @click="clear">{{ drawer.clear }}</AButton>
+          <AButton size="small" type="text" @click="copy">{{ drawer.copy }}</AButton>
+          <AButton size="small" type="text" @click="emit('toggle', false)">
             {{ drawer.close }}
-          </button>
-        </div>
+          </AButton>
+        </ASpace>
       </header>
 
       <div ref="host" class="drawer-term" />
@@ -228,22 +229,6 @@ watch(
 .drawer-actions {
   display: flex;
   gap: 6px;
-}
-
-.drawer-action {
-  padding: 3px 8px;
-  color: #9ca3af;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  background: none;
-  border: 1px solid #1f2937;
-  border-radius: 4px;
-}
-
-.drawer-action:hover {
-  color: #e5e7eb;
-  border-color: #374151;
 }
 
 .drawer-term {
