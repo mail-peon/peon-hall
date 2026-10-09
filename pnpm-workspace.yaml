@@ -2,3 +2,6 @@
 # Vite 需要 esbuild 的 postinstall；其余依赖一律不允许跑脚本（供应链最小面）。
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@tauri-apps/api@2.12.2'
+  - vite@8.3.4
