@@ -48,11 +48,20 @@ peon-burrow-ipc = { git = "https://github.com/mail-peon/peon-burrow", tag = "v0.
 ### 2.1 找到通道
 
 ```
-读 <data-dir>/control.json  →  { schema, token, kind, path, pid }
-      Windows : %LOCALAPPDATA%\peon-burrow\control.json
+读 <data-dir>/control.json  →  { kind, address, token, pid }
+      Windows : %LOCALAPPDATA%\peon-burrow\data\control.json
       macOS   : ~/Library/Application Support/peon-burrow/control.json
-      Linux   : ~/.local/state/peon-burrow/control.json
+      Linux   : ~/.local/share/peon-burrow/control.json
 ```
+
+> ⚠️ Windows 上多一层 `data\`：core 的 `Paths::discover()` 用 `directories::ProjectDirs`，
+> 它在 Windows 会给 `data_local_dir()` 追加 `data`、给 `config_dir()` 追加 `config`
+> （macOS / Linux 没有这一层）。桌面端用同样的推导（`src-tauri/src/discovery.rs`），
+> 不要硬编码路径。
+>
+> 字段名以实现为准：`{ kind, address, token, pid }`
+> （`peon-burrow-ipc::ControlEndpoint`）。`pid` 是**可选**的 —— 老版本写的文件里没有它；
+> 有它时桌面端可以区分「服务没在跑」与「发现文件是旧的」。
 
 | 情况 | 界面 |
 | --- | --- |
