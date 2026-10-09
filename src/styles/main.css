@@ -81,80 +81,10 @@ body {
   cursor: text;
 }
 
-/* 状态点：卡片左侧的圆点，颜色来自状态色 */
-.state-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 9999px;
-  flex: none;
-}
-
-.state-dot--running {
-  background: var(--state-running);
-}
-.state-dot--stopped {
-  background: var(--state-stopped);
-}
-.state-dot--foreground {
-  background: var(--state-foreground);
-}
-.state-dot--none {
-  background: var(--state-none);
-}
-
-/* 提示条 */
-.notice {
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-}
-.notice--warn {
-  background: var(--notice-warn-bg);
-  color: var(--notice-warn-fg);
-}
-.notice--error {
-  background: var(--notice-error-bg);
-  color: var(--notice-error-fg);
-}
-
-/* 信息行（标签 + 值 + 可选按钮） */
-.info-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  min-height: 24px;
-}
-.info-row__label {
-  color: var(--muted);
-  flex: none;
-  min-width: 68px;
-}
-.info-row__value {
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-
 /* 代码样式的值（地址、路径） */
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
-}
-
-/* 转圈：不引组件库，用 CSS 画 */
-.spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 9999px;
-  display: inline-block;
-  animation: spin 0.6s linear infinite;
-  vertical-align: -1px;
 }
 @keyframes spin {
   to {
@@ -171,30 +101,56 @@ body {
   max-height: 260px;
   padding-right: 4px;
 }
-.check-item {
-  display: grid;
-  grid-template-columns: 20px 1fr auto;
-  gap: 6px;
-  align-items: start;
-  font-size: 13px;
-}
-.check-item__detail {
-  color: var(--muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
+
+/* 滚动条：原生定制（ant-design-vue 没有公开的滚动条组件，官方站点也是这么做的）。
+   目标是「细、圆、平时低调、悬停才明显」，并且跟随深浅色。
+   两套属性都给：WebKit/Chromium 用 ::-webkit-scrollbar，其它内核用标准属性降级。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
-/* 折叠区（系统服务这类高级选项） */
-details > summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 13px;
-  user-select: none;
+/* 抽屉打开时不做布局跳动：给滚动容器预留槽位 */
+.app {
+  scrollbar-gutter: stable;
 }
 
-/* 让按钮里的图标与文字对齐 */
-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  background-color: var(--border);
+  border: 3px solid transparent; /* 视觉上更细，热区还是 10px */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 命令抽屉是深色毛玻璃，滚动条要跟着换一套颜色 */
+.xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 18%);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 32%);
 }
