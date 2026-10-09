@@ -1,0 +1,48 @@
+[package]
+name = "peon-hall"
+version = "0.1.0"
+description = "peon-burrow 中继的桌面安装器与状态面板"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/mail-peon/peon-hall"
+
+[lib]
+name = "peon_hall_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+directories = "6"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
+# 控制面协议的**唯一实现**（见 ai-docs/02-core-integration.md § 1）。
+#
+# ⚠️ 现在是 **path 依赖**：开发/调试阶段直接用本地姊妹仓库，改 core 立刻生效。
+# 发版前必须换成钉死的 git tag 依赖或 crates.io 版本依赖，且**只用一个 PR 改**：
+#   1. 钉 tag：peon-burrow-ipc = { git = "https://github.com/mail-peon/peon-burrow", tag = "v0.1.0", package = "peon-burrow-ipc" }
+#   2. 发版后：peon-burrow-ipc = "0.1"
+# 提交 path 依赖会让 CI 与别人的 checkout 都找不到路径。
+peon-burrow-ipc = { path = "../../peon-burrow/crates/peon-burrow-ipc" }
+peon-burrow-ipc-types = { path = "../../peon-burrow/crates/peon-burrow-ipc-types" }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

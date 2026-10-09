@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "状态卡片与五个操作所需的权限",
+  "windows": ["*"],
+  "permissions": ["core:default", "clipboard-manager:allow-write-text"]
+}
