@@ -89,7 +89,8 @@ onMounted(async () => {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 12,
     scrollback: 5000,
-    theme: { background: '#0b0f14', foreground: '#d7dee8', cursor: '#0b0f14' },
+    // 终端自身透明：毛玻璃由外层 .drawer 负责，这样整块面板才是同一个材质
+    theme: { background: 'rgba(0, 0, 0, 0)', foreground: '#e5e7eb', cursor: '#0b0f14' },
   })
   term.loadAddon(fitAddon)
   term.open(host.value!)
