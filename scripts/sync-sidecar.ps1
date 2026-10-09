@@ -24,6 +24,20 @@ if (-not (Test-Path $source)) {
     throw "找不到 $source —— 先在 core 仓库里跑：cargo build -p peon-burrow --$Configuration"
 }
 
+# ⓪ **新鲜度闸**：core 的源码比这个二进制新，就说明忘了重新 `cargo build`。
+#    踩过两次：改完 core 只跑 `cargo test`（它只重建测试用的 lib），同步的还是旧二进制，
+#    现象是「代码明明改了、行为还是老的」——最难查的那类问题。宁可直接拦下来。
+$newestSource = Get-ChildItem -Path (Join-Path $coreRepo 'crates'), (Join-Path $coreRepo 'Cargo.toml') `
+        -Recurse -File -Include *.rs, Cargo.toml -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($newestSource -and $newestSource.LastWriteTime -gt (Get-Item $source).LastWriteTime) {
+    throw @"
+$source 比源码旧（$($newestSource.LastWriteTime) > $((Get-Item $source).LastWriteTime)）
+最新改动的文件：$($newestSource.FullName)
+先重新构建：cargo build -p peon-burrow --$Configuration --manifest-path "$coreRepo\Cargo.toml"
+"@
+}
+
 # ① Tauri 打包用的位置（配置名 `binaries/burrow` + triple）
 $binaries = Join-Path $root 'src-tauri\binaries'
 New-Item -ItemType Directory -Force $binaries | Out-Null
