@@ -53,11 +53,21 @@ fn check_against_the_ipc_dependency(manifest_dir: &Path, version: &str) {
     let manifest: toml::Value = text
         .parse()
         .unwrap_or_else(|error| panic!("{} 不是合法 TOML：{error}", path.display()));
-    let requirement = manifest
+    let entry = manifest
         .get("dependencies")
         .and_then(|deps| deps.get("peon-burrow-ipc"))
-        .and_then(toml::Value::as_str)
         .unwrap_or_else(|| panic!("{} 里缺 peon-burrow-ipc 依赖", path.display()));
+
+    // 本地联调时这个依赖会写成内联表（`{ path = "../../peon-burrow/crates/..." }`，见
+    // Cargo.toml 的注释）—— 那种模式下版本对不上是**预期**的，所以只对字符串形式
+    // （`peon-burrow-ipc = "0.1"`，即提交到仓库的正式状态）做同代检查。
+    let Some(requirement) = entry.as_str() else {
+        println!(
+            "cargo:warning=peon-burrow-ipc 是 path/table 依赖（本地联调模式），\
+             跳过与 bundle.toml 的版本对齐检查"
+        );
+        return;
+    };
 
     let bare = version.trim_start_matches('v');
     assert!(
