@@ -61,20 +61,28 @@ fi
 # 失败时先看这一行：下载到的到底是哪几个文件（空的话说明 release/tag/pattern 有一个不对）
 echo "  已下载: $(ls -1 "$work" 2>/dev/null | tr '\n' ' ')"
 
+# 校验和工具：Linux 与 Git Bash 有 `sha256sum`，**macOS 上没有它**（只有 `shasum -a 256`）
+# —— core 的 `package-release.sh` 也是这么兜的；少了这一层，macOS 那两个 leg 会校验失败。
+if command -v sha256sum > /dev/null 2>&1; then
+  sum_check=(sha256sum -c)
+else
+  sum_check=(shasum -a 256 -c)
+fi
+
 # ⚠️ 校验和优先用合并清单，没有就退回归档自带的 `.sha256`。
 #    这里**不能**硬依赖 `SHA256SUMS`：core 到 v0.1.0 为止都没生成它（它的 ai-docs 里
 #    承诺了「一个 SHA256SUMS」，但 scripts/ 与 assets.yaml 里都没有那一步），
 #    硬依赖会让第一个 bundle job 直接红在「没拿到 SHA256SUMS」。
 if [ -f "$work/SHA256SUMS" ]; then
   # 只校验我们这个平台的产物（清单里还有别的平台）
-  (cd "$work" && grep "peon-burrow-$triple" SHA256SUMS > mine.sums && sha256sum -c mine.sums)
+  (cd "$work" && grep "peon-burrow-$triple" SHA256SUMS > mine.sums && "${sum_check[@]}" mine.sums)
 else
   sum="$(ls "$work"/peon-burrow-"$triple".*.sha256 2>/dev/null | head -1 || true)"
   [ -n "$sum" ] || {
     echo "既没有 SHA256SUMS 也没有单文件校验和：$repo 的 $core_ref 资产不完整" >&2
     exit 1
   }
-  (cd "$work" && sha256sum -c "$(basename "$sum")")
+  (cd "$work" && "${sum_check[@]}" "$(basename "$sum")")
 fi
 
 archive="$(ls "$work"/peon-burrow-"$triple".* | grep -v sha256 | head -1)"
