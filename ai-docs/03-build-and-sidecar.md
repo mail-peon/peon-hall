@@ -142,6 +142,27 @@ src-tauri/tauri.linux.conf.json
 > （[tauri-apps/tauri#9835](https://github.com/tauri-apps/tauri/issues/9835)）。
 > 我们的默认是 `perUser`；若将来要 `perMachine`，必须重新审视「非提权 GUI 走控制面」这条设计。
 
+### 3.2 图标：一个母版，`pnpm tauri icon` 生成整套
+
+| 东西 | 位置 |
+| --- | --- |
+| **母版**（唯一手改的文件） | 仓库根的 `app-icon.png`（1024×1024，透明底） |
+| 素材来源 | `.github/images/great-hall.png`（README 的概念图，300×300 透明 PNG） |
+| 生成物 | `src-tauri/icons/*`：`icon.ico`（16–256 七档）、`icon.icns`（macOS）、`32/64/128/128@2x/512` PNG、Windows Store 的 `Square*Logo` / `StoreLogo` |
+| 标签页图标 | `public/favicon.png`（= `icons/128x128.png` 的拷贝）+ `index.html` 一行 `<link rel="icon">`。Tauri 窗口自己用的是 bundle 图标，这个只影响 `pnpm dev` 在浏览器里打开时 |
+| **relay 的图标是另一套** | `burrow.exe` 用 `.github/images/burrow.png`（peon-burrow 仓库自己嵌，见那份仓库的 `crates/peon-burrow/build.rs`）；大厅图标是 GUI 的，别混 |
+
+```bash
+# 换图标：改 app-icon.png（或直接用它当输入）后，在仓库根跑
+pnpm tauri icon
+```
+
+| 坑 | 说明 |
+| --- | --- |
+| 它会顺手生成 `icons/android` 与 `icons/ios` | 本项目 `bundle.targets` 只有桌面（nsis/msi/app/dmg/appimage/deb）→ **用完删掉**这两个目录，别让移动端图标进仓库 |
+| 母版分辨率 | 源图只有 300px；`tauri icon` 会**先把母版放大到 1024 再缩回各档**（两次重采样），小尺寸会发糊。当前提交的小尺寸（≤310px）是**从源图原生分辨率单步渲染**的，比 `tauri icon` 的产物干净；`icon.icns` 仍是它的产物（Pillow 写不了 icns）。重跑一次 `pnpm tauri icon` 会退回稍糊的版本 —— 能接受，但知道一下 |
+| 改完要重新构建 Rust 侧 | exe / 安装包 / 任务栏图标是 `tauri-build` 从 `bundle.icon` 编进去的，光换 `icons/` 里的文件不会影响**已经构建过的**二进制 |
+
 ---
 
 ## 4. capabilities（Tauri 2 权限）
