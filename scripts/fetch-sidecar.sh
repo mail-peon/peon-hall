@@ -30,17 +30,12 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "取 $repo 的 $core_ref（$triple）"
-if command -v gh > /dev/null 2>&1; then
-  # `peon-burrow-<triple>.*` 会同时带上归档与它自带的单文件 .sha256
-  gh release download "$core_ref" --repo "$repo" \
-    --pattern "peon-burrow-${triple}.*" --clobber --dir "$work"
-  # 合并清单是**可选**的：core 的文档承诺了 `SHA256SUMS`，但到 v0.1.0 为止还没生成。
-  # 拿不到就退到单文件校验和 —— 两者信任级别一样（都来自同一个 release）。
-  gh release download "$core_ref" --repo "$repo" \
-    --pattern 'SHA256SUMS' --clobber --dir "$work" 2>/dev/null || true
-else
-  # 没有 gh 时退回 curl（公开仓库不需要 token）
+# ⚠️ 优先 curl：core 是公开仓库，https 直连**不需要任何 token**（少一个变数），
+#    而且这条路是本地逐 target 实测跑通的。`gh` 只作兜底 —— 它要 GH_TOKEN，
+#    而 CI 里那个 token 属于本仓库，去读另一个仓库的资源可能被当成 404。
+if command -v curl > /dev/null 2>&1; then
   base="https://github.com/$repo/releases/download/$core_ref"
+  echo "  方式=curl  base=$base"
   curl -fsSL "$base/SHA256SUMS" -o "$work/SHA256SUMS" 2>/dev/null || true
   # 归档后缀按平台不同：Windows 是 `.zip`，其余是 `.tar.gz`（见 core 的两个 package-release 脚本）
   for suffix in zip tar.gz; do
@@ -50,7 +45,21 @@ else
       break
     fi
   done
+elif command -v gh > /dev/null 2>&1; then
+  echo "  方式=gh  仓库=$repo  pattern=peon-burrow-${triple}.*"
+  # `peon-burrow-<triple>.*` 会同时带上归档与它自带的单文件 .sha256
+  gh release download "$core_ref" --repo "$repo" \
+    --pattern "peon-burrow-${triple}.*" --clobber --dir "$work"
+  # 合并清单是**可选**的：core 的文档承诺了 `SHA256SUMS`，但到 v0.1.0 为止还没生成。
+  gh release download "$core_ref" --repo "$repo" \
+    --pattern 'SHA256SUMS' --clobber --dir "$work" 2>/dev/null || true
+else
+  echo "既没有 curl 也没有 gh，没法下载 core 二进制" >&2
+  exit 1
 fi
+
+# 失败时先看这一行：下载到的到底是哪几个文件（空的话说明 release/tag/pattern 有一个不对）
+echo "  已下载: $(ls -1 "$work" 2>/dev/null | tr '\n' ' ')"
 
 # ⚠️ 校验和优先用合并清单，没有就退回归档自带的 `.sha256`。
 #    这里**不能**硬依赖 `SHA256SUMS`：core 到 v0.1.0 为止都没生成它（它的 ai-docs 里

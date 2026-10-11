@@ -93,6 +93,14 @@ jobs:
           set -euo pipefail
           suffix=""
           case "${{ matrix.target }}" in *windows*) suffix=".exe" ;; esac
+          # 失败时先把这个目录真实的内容打出来 —— 只报一句 "No such file" 查不出原因
+          if [ ! -f "src-tauri/binaries/burrow-${{ matrix.target }}${suffix}" ]; then
+            echo "::group::src-tauri/binaries"
+            ls -la src-tauri/binaries 2>&1 || echo "(the directory does not exist)"
+            echo "::endgroup::"
+            echo "::error::the sidecar for ${{ matrix.target }} is missing"
+            exit 1
+          fi
           ls -l "src-tauri/binaries/burrow-${{ matrix.target }}${suffix}"
 
       # ⚠️ 不设 includeUpdaterJson、不给 TAURI_SIGNING_PRIVATE_KEY：
