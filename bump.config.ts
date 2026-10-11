@@ -30,6 +30,12 @@ export default defineConfig({
   // ⚠️ 反向命名、而且**默认是跳过检查**的（`noGitCheck` 默认 `true`）——所以显式设 false 才算打开。
   //    打开之后：工作区不干净就不发版。不然那笔无关改动可能被 bumpp 一起提交。
   noGitCheck: false,
+  // ⚠️ 必须和上一行一起看：bumpp 默认**只提交被 bump 的那几个文件**（`-a/--all` 默认 false），
+  //    所以下面 `execute` 刷新的 `Cargo.lock` 会被漏在提交之外 —— 实测 v0.1.3 的发布提交里
+  //    就只有 package.json / tauri.conf.json / Cargo.toml 三个文件，lock 留在工作区里脏着。
+  //    打开 `all` 之后提交会带上它；之所以安全，是因为「发版前工作区必须干净」那道闸
+  //    （noGitCheck: false）已经把无关改动挡在外面了 —— 提交时工作区里只剩这次发版自己的改动。
+  all: true,
   commit: 'chore: release v{version}',
   tag: 'v{version}',
 })
