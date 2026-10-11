@@ -29,6 +29,13 @@ repo="${CORE_REPO:-$(read_config repo)}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# 出错时把「死在哪一行 + 手上有什么」打出来。CI 上只看到下游那句
+# 「the sidecar … is missing」根本查不出原因（真踩过：macOS 上 sha256sum 不存在）。
+trap 'code=$?; echo "fetch-sidecar: 失败（exit $code）于 ${BASH_SOURCE[0]}:${LINENO}" >&2;
+      echo "  root=$root" >&2;
+      echo "  work 里有什么：$(ls -1 "$work" 2>/dev/null | tr "\n" " ")" >&2;
+      echo "  目标目录：$(ls -ld "$root/src-tauri/binaries" 2>&1)" >&2' ERR
+
 echo "取 $repo 的 $core_ref（$triple）"
 # ⚠️ 优先 curl：core 是公开仓库，https 直连**不需要任何 token**（少一个变数），
 #    而且这条路是本地逐 target 实测跑通的。`gh` 只作兜底 —— 它要 GH_TOKEN，
