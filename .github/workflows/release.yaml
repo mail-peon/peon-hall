@@ -6,6 +6,9 @@
 #
 # 没有 push / pull_request / workflow_dispatch 入口：检查发生在发版那一刻。
 # 失败时**不要移动 tag** —— 修好之后从 Actions 页面重跑失败的 job 即可。
+# ⚠️ 例外：如果失败的原因是**这个文件本身**要改（例如 runner 标签失效、action 版本要动），
+#    重跑用的是 tag 上那份旧 workflow，改了也生效不了 —— 那种情况只能打新 tag
+#    （或 force-push 同名 tag，但那是改写已发布的历史）。
 #
 # ⚠️ 除注释外**不要写中文**（含 job/step 的 name 与 echo 文案）。
 # ⚠️ name 里不要出现 `#`：GitHub 会把它当注释，后面的字就没了

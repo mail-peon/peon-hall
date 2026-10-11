@@ -106,13 +106,13 @@ jobs:
 | --- | --- | --- |
 | 1 | `actions/checkout@v7` | |
 | 2 | 校验 tag == `package.json` 的 version | 早失败，别等到打完包 |
-| 3 | `dtolnay/rust-toolchain@master` with `targets: ${{ matrix.target }}` | Tauri 需要指定 target |
+| 3 | `dtolnay/rust-toolchain@stable` with `targets: ${{ matrix.target }}` | Tauri 需要指定 target；`@stable` 是工具链名，**不是**分支名 |
 | 4 | `Swatinem/rust-cache@v2`（`workspaces: src-tauri -> target`） | |
 | 5 | Linux 系统依赖（WebKitGTK 等） | 仅 ubuntu |
 | 6 | `actions/setup-node@v7` + `pnpm/action-setup@v6` + `pnpm install --frozen-lockfile` | |
 | 7 | **取 core 二进制**：`core_ref`（输入或 `core-version.txt`）→ `gh release download` → `sha256sum -c` → 重命名成 `<name>-<triple>` | 见 [`03-build-and-sidecar.md § 2.1`](./03-build-and-sidecar.md) |
 | 8 | `tauri-apps/tauri-action@v1.0.0`，`args: --target ${{ matrix.target }}` | **不设** `includeUpdaterJson`、**不给** `TAURI_SIGNING_PRIVATE_KEY` |
-| 9 | release notes 里写清「捆绑 core vX.Y.Z」 | 用 `--notes` 或先写文件再传给 action |
+| 9 | 把「捆绑了哪个 core」写进 job summary（`$GITHUB_STEP_SUMMARY`） | 现在就是这样；想让 **release notes** 也带上它，得再用 `releaseBody` 传一遍 |
 
 > ⚠️ `tauri-action` 的版本要**钉死**（`@v1.0.0`）。参考项目的注释里写着
 > 「上游改了 `latest.json` 的生成逻辑，故锁定版本」—— 我们不用 updater，
@@ -145,7 +145,7 @@ jobs:
 
 | # | 检查 |
 | --- | --- |
-| 1 | `core-version.txt` 指向一个**已存在**的 core tag，且该 tag 的资产能被下载 |
+| 1 | `core-version.txt` 指向一个**已存在**的 core tag，且该 tag 的资产能被下载（`ci.yaml` 的 `the pinned core version must be downloadable` 已经在挡这一步） |
 | 2 | `package.json`、`tauri.conf.json`、`src-tauri/Cargo.toml` 版本一致 |
 | 3 | 本地 `pnpm tauri build` 出的安装包里 sidecar 的 sha256 与 core release 一致 |
 | 4 | 干净机器上装一次：主路径零 UAC；五种操作都对 |

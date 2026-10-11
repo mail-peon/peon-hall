@@ -9,10 +9,10 @@
 
 | 文件 | 内容 | 谁维护 |
 | --- | --- | --- |
-| `core-version.txt`（仓库根） | 一个 tag，例 `v0.1.0` | 人工（或脚本）在 core 发版后更新；**进 git** |
+| `core-version.txt`（仓库根） | 一个 tag，例 `v0.1.0` | 人工（或脚本）在 core 发版后更新；**进 git**。⚠️ CI 会验它指向的 release 资产真能下载（`ci.yaml` 的 `the pinned core version must be downloadable`）—— 真机上它曾一直停在 `v0.0.0`，那是必红的 |
 | CI 输入 `core_ref` | 覆盖上面的 tag（默认读文件） | 发版时可选 |
 
-发版产物里要能回答「这个安装包带的是哪个 core」→ release notes 里写，
+发版产物里要能回答「这个安装包带的是哪个 core」→ job summary 里写（`release.yaml` 的最后一步），
 并且 sidecar 的版本在界面「关于」里可见（读控制面 `version`）。
 
 ---
@@ -68,17 +68,26 @@ gh release download "$CORE_REF" \
   --repo mail-peon/peon-burrow \
   --pattern "peon-burrow-${TRIPLE}.*" --clobber --dir /tmp/burrow-asset
 
-# 校验（core 的 release 里带 SHA256SUMS）
-gh release download "$CORE_REF" --repo mail-peon/peon-burrow \
-  --pattern 'SHA256SUMS' --clobber --dir /tmp/burrow-asset
-(cd /tmp/burrow-asset && sha256sum -c --ignore-missing SHA256SUMS)
+# 校验（core 的 release 里**不一定**有合并清单 SHA256SUMS，见下）
+# 优先用它；拿不到就退回归档自带的单文件 `.sha256`
+if gh release download "$CORE_REF" --repo mail-peon/peon-burrow \
+     --pattern 'SHA256SUMS' --clobber --dir /tmp/burrow-asset 2>/dev/null; then
+  (cd /tmp/burrow-asset && sha256sum -c --ignore-missing SHA256SUMS)
+else
+  (cd /tmp/burrow-asset && sha256sum -c peon-burrow-"${TRIPLE}".*.sha256)
+fi
 
 # 解压 → 重命名成 Tauri 要的名字
 #   .zip（Windows）/ .tar.gz（Unix）里是 burrow[.exe] + LICENSE
 ```
 
-⚠️ **必须校验**：安装包里的核心二进制如果被换掉，等于给用户装了一个
+⚠️ **必须校验**：安装包里的核心二进制如果被换掉，等于给用户装了个
 能看到邮箱凭据的后门。这一步是供应链上最便宜的一道闸。
+
+> ⚠️ core 的 `ai-docs` 承诺过「一个合并的 `SHA256SUMS`」，但**到 v0.1.0 为止它没有生成过**
+> （`scripts/` 与 `assets.yaml` 里都没有那一步）。所以两处都要容错：
+> `scripts/fetch-sidecar.sh` 先试 `SHA256SUMS`，拿不到就用归档自带的 `.sha256`
+> —— 两者信任级别一样（都出自同一个 release）。core 补上之后首选分支会自动生效。
 
 ---
 
@@ -257,7 +266,7 @@ pnpm tauri icon
 | # | 断言 |
 | --- | --- |
 | 1 | 三平台 `pnpm tauri build` 都能产出安装包，且安装包里含 sidecar |
-| 2 | sidecar 的 sha256 与 core release 的 `SHA256SUMS` 一致（CI 里断言） |
+| 2 | sidecar 的 sha256 与 core release 的校验和一致（优先 `SHA256SUMS`，退回单文件 `.sha256`；由 `scripts/fetch-sidecar.sh` 在 CI 里断言） |
 | 3 | 安装包的元数据里版本 == `package.json` 的版本 |
 | 4 | 安装后 off-line 可用（无任何联网检查） |
 | 5 | 安装包不包含 `latest.json` / `.sig` 之类的更新产物 |
