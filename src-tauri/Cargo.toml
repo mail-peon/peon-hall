@@ -13,6 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# `build.rs` 用它解析仓库根的 `bundle.toml`（core 版本注入；版本与下面的普通依赖一致）
+toml = "0.8"
 
 [dependencies]
 tauri = { version = "2", features = [] }

@@ -45,16 +45,25 @@ jobs:
       # Rust 改了字段名时前端不会编译报错，靠这一步挡住（ADR-1001 Q2）
       - run: node scripts/check-types.mjs
 
-      # ⚠️ core-version.txt 是人手维护的（core 发版后要改），写错时**第一个 bundle job 才会红**
+      # ⚠️ bundle.toml 是人手维护的（core 发版后要改），写错时**第一个 bundle job 才会红**
       #    —— 这里提前验：那个 tag 的资产真的能下载。
-      #    真机踩过：它一直停在 `v0.0.0`，而 core 的 tag 从 `v0.0.1` 才开始（等于必红）。
+      #    真机踩过：core 版本曾停在 `v0.0.0`，而 core 的 tag 从 `v0.0.1` 才开始（等于必红）。
       - name: the pinned core version must be downloadable
         shell: bash
         run: |
           set -euo pipefail
-          core="$(tr -d '[:space:]' < core-version.txt)"
-          echo "core-version.txt = $core"
-          base="https://github.com/mail-peon/peon-burrow/releases/download/$core"
+          # bundle.toml 是**扁平**的（见文件顶部说明）：用与 scripts/fetch-sidecar.sh
+          # 相同的 grep + sed 规则读它，不引 TOML 解析器。
+          read_config() {
+            grep -E "^[[:space:]]*$1[[:space:]]*=" bundle.toml | head -1 \
+              | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/'
+          }
+          core="$(read_config version)"
+          repo="$(read_config repo)"
+          [ -n "$core" ] && [ -n "$repo" ] || {
+            echo "::error::bundle.toml has no core.version / core.repo"; exit 1; }
+          echo "bundle.toml: core=$core repo=$repo"
+          base="https://github.com/$repo/releases/download/$core"
           # 只探 fetch-sidecar.sh 真正要用的三个：归档、它的单文件校验和、以及 core 自更新的清单
           for name in \
             peon-burrow-x86_64-unknown-linux-gnu.tar.gz \

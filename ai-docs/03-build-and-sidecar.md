@@ -9,7 +9,7 @@
 
 | 文件 | 内容 | 谁维护 |
 | --- | --- | --- |
-| `core-version.txt`（仓库根） | 一个 tag，例 `v0.1.0` | 人工（或脚本）在 core 发版后更新；**进 git**。⚠️ CI 会验它指向的 release 资产真能下载（`ci.yaml` 的 `the pinned core version must be downloadable`）—— 真机上它曾一直停在 `v0.0.0`，那是必红的 |
+| [`bundle.toml`](../bundle.toml)（仓库根） | `[core] version`（一个 tag，例 `v0.1.0`）+ `[core] repo` | 人工（或脚本）在 core 发版后更新；**进 git**。⚠️ CI 会验它指向的 release 资产真能下载（`ci.yaml` 的 `the pinned core version must be downloadable`）—— 真机上 core 版本曾一直停在 `v0.0.0`，那是必红的 |
 | CI 输入 `core_ref` | 覆盖上面的 tag（默认读文件） | 发版时可选 |
 
 发版产物里要能回答「这个安装包带的是哪个 core」→ job summary 里写（`release.yaml` 的最后一步），
@@ -18,7 +18,7 @@
 ---
 
 > ℹ️ 本文（以及本仓库其它文档）里的 **core** 都指姊妹仓库 **`peon-burrow`**（二进制 `burrow`）。
-> `core-version.txt` / `core_ref` 这类名字保留，表示「绑定的 peon-burrow 版本」。
+> `core_ref` 这个名字保留，表示「绑定的 peon-burrow 版本」（来自 `bundle.toml` 的 `[core] version`）。
 
 ## 2. sidecar 命名契约（Tauri 要求）
 
@@ -59,7 +59,8 @@ src-tauri/binaries/
 ### 2.1 取二进制（构建前）
 
 ```bash
-CORE_REF="$(cat core-version.txt)"
+CORE_REF="$(grep -E '^[[:space:]]*version[[:space:]]*=' bundle.toml | head -1 \
+  | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/')"
 TRIPLE="$(rustc --print host-tuple)"
 mkdir -p src-tauri/binaries
 

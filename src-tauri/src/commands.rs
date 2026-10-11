@@ -18,8 +18,8 @@ use crate::elevate::{self, ElevationOutcome};
 use crate::sidecar::{self, ServiceAction, SidecarError};
 use crate::snapshot::{self, DiscoveryState, Snapshot, UrlSource};
 
-/// 本安装包绑定的 core 版本（来自仓库根的 `core-version.txt`，编译期注入）。
-pub const CORE_BOUND: &str = include_str!("../../core-version.txt");
+/// 本安装包绑定的 core 版本（来自仓库根的 `bundle.toml`，由 `build.rs` 在编译期注入）。
+pub const CORE_BOUND: &str = env!("CORE_BOUND");
 
 /// 错误码：前端按它分支（**不要匹配 message**）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -741,7 +741,8 @@ mod tests {
 
     #[test]
     fn the_bound_core_version_is_present() {
-        // core-version.txt 必须在仓库根且非空（CI 也断言它指向一个存在的 tag）
+        // `build.rs` 已经从 bundle.toml 里解析并断言过一次（含与 IPC 依赖的对齐）；
+        // 这里守的是「注入真的发生了」—— CI 还会验它指向的 release 资产能下载
         assert!(!CORE_BOUND.trim().is_empty());
         assert!(CORE_BOUND.trim().starts_with('v'), "{}", CORE_BOUND);
     }

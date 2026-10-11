@@ -111,7 +111,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          core="$(tr -d '[:space:]' < core-version.txt)"
+          core="$(grep -E '^[[:space:]]*version[[:space:]]*=' bundle.toml | head -1 \
+            | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/')"
           echo "This installer bundles core $core" >> "$GITHUB_STEP_SUMMARY"
 
   verify-no-updater-artifacts:

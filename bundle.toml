@@ -1,0 +1,19 @@
+# peon-hall 的**捆绑配置**：桌面端安装包里带的是哪个 core（peon-burrow）二进制。
+#
+# ⚠️ 这不是用户配置 —— 用户改的是 core 的 `relay.toml`（落在 `%APPDATA%\peon-burrow\config\`）。
+#    改这里等于改**发布产物**：它决定 sidecar 的版本。
+#
+# ⚠️ 保持**扁平**（一层表 + 两行键值）：读取它的是 shell 脚本，用 `grep` + `sed` 解析，
+#    别加嵌套表、数组或行尾注释以外的花样。改完记得 `pnpm tauri build` 之前不用做别的 ——
+#    CI 会先验 `core.version` 指向的 release 资产真的能下载。
+#
+# 谁读它：
+#   - `scripts/fetch-sidecar.sh`（默认 `core_ref` / `repo` 就是这两行）
+#   - `.github/workflows/ci.yaml` 的 `the pinned core version must be downloadable`
+#   - `.github/workflows/release.yaml`（把捆绑的 core 写进 job summary）
+
+[core]
+# 绑定的 peon-burrow release tag：sidecar 的版本就是它
+version = "v0.1.0"
+# 从哪里取；fork / 内网镜像改这一行（脚本仍可用 `CORE_REPO` 环境变量临时覆盖）
+repo = "mail-peon/peon-burrow"

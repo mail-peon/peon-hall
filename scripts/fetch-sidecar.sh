@@ -2,7 +2,7 @@
 # CI/发版用：从 core 的 GitHub Release 取中继二进制，**校验 sha256**，放到 Tauri 要的位置。
 #
 # 用法：scripts/fetch-sidecar.sh [core-ref] [target-triple]
-#   core-ref      默认读仓库根的 core-version.txt（例：v0.1.0）
+#   core-ref      默认读仓库根 `bundle.toml` 的 `[core] version`（例：v0.1.0）
 #   target-triple 默认 rustc --print host-tuple
 #
 # ⚠️ 必须校验：安装包里的核心二进制如果被换掉，等于给用户装了一个能看到邮箱凭据的后门。
@@ -10,9 +10,21 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-core_ref="${1:-$(tr -d '[:space:]' < "$root/core-version.txt")}"
+config="$root/bundle.toml"
+
+# 从 bundle.toml 读一个**扁平**的值（见那个文件顶部的说明；与 ci.yaml 的守卫同一套规则）。
+#   read_config version  ->  [core] version 的值，去掉引号与行尾注释
+read_config() {
+  grep -E "^[[:space:]]*$1[[:space:]]*=" "$config" | head -1 \
+    | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/'
+}
+
+core_ref="${1:-$(read_config version)}"
 triple="${2:-$(rustc --print host-tuple)}"
-repo="${CORE_REPO:-mail-peon/peon-burrow}"
+repo="${CORE_REPO:-$(read_config repo)}"
+
+[ -n "$core_ref" ] || { echo "bundle.toml 里读不到 core.version" >&2; exit 1; }
+[ -n "$repo" ] || { echo "bundle.toml 里读不到 core.repo" >&2; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

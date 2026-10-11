@@ -33,8 +33,8 @@
 
 ```bash
 # 1) 确认 core 已发版，并更新绑定的 core 版本
-cat core-version.txt                  # 例：v0.1.0
-#    如需升级： echo v0.2.0 > core-version.txt
+cat bundle.toml                        # [core] version 就是捆绑的 core tag
+#    如需升级：改 bundle.toml 的 [core] version（例：v0.2.0）
 
 # 2) 跑本地检查
 pnpm install
@@ -110,7 +110,7 @@ jobs:
 | 4 | `Swatinem/rust-cache@v2`（`workspaces: src-tauri -> target`） | |
 | 5 | Linux 系统依赖（WebKitGTK 等） | 仅 ubuntu |
 | 6 | `actions/setup-node@v7` + `pnpm/action-setup@v6` + `pnpm install --frozen-lockfile` | |
-| 7 | **取 core 二进制**：`core_ref`（输入或 `core-version.txt`）→ `gh release download` → `sha256sum -c` → 重命名成 `<name>-<triple>` | 见 [`03-build-and-sidecar.md § 2.1`](./03-build-and-sidecar.md) |
+| 7 | **取 core 二进制**：`core_ref`（输入或 `bundle.toml` 的 `[core] version`）→ `gh release download` → `sha256sum -c` → 重命名成 `<name>-<triple>` | 见 [`03-build-and-sidecar.md § 2.1`](./03-build-and-sidecar.md) |
 | 8 | `tauri-apps/tauri-action@v1.0.0`，`args: --target ${{ matrix.target }}` | **不设** `includeUpdaterJson`、**不给** `TAURI_SIGNING_PRIVATE_KEY` |
 | 9 | 把「捆绑了哪个 core」写进 job summary（`$GITHUB_STEP_SUMMARY`） | 现在就是这样；想让 **release notes** 也带上它，得再用 `releaseBody` 传一遍 |
 
@@ -145,11 +145,11 @@ jobs:
 
 | # | 检查 |
 | --- | --- |
-| 1 | `core-version.txt` 指向一个**已存在**的 core tag，且该 tag 的资产能被下载（`ci.yaml` 的 `the pinned core version must be downloadable` 已经在挡这一步） |
+| 1 | `bundle.toml` 的 `[core] version` 指向一个**已存在**的 core tag，且该 tag 的资产能被下载（`ci.yaml` 的 `the pinned core version must be downloadable` 已经在挡这一步） |
 | 2 | `package.json`、`tauri.conf.json`、`src-tauri/Cargo.toml` 版本一致 |
 | 3 | 本地 `pnpm tauri build` 出的安装包里 sidecar 的 sha256 与 core release 一致 |
 | 4 | 干净机器上装一次：主路径零 UAC；五种操作都对 |
-| 5 | 界面里显示的 core 版本与 `core-version.txt` 一致 |
+| 5 | 界面里显示的 core 版本与 `bundle.toml` 的 `[core] version` 一致（`build.rs` 编译期注入，并断言它与 `peon-burrow-ipc` 的依赖要求同代） |
 | 6 | 没有 updater 产物（release 里不应出现 `.sig` / `latest.json`） |
 
 ---

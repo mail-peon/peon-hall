@@ -84,7 +84,7 @@ pub struct Snapshot {
     pub sidecar_present: bool,
     /// 桌面端版本。
     pub app_version: String,
-    /// 本安装包绑定的 core 版本（`core-version.txt`）。
+    /// 本安装包绑定的 core 版本（`bundle.toml` 的 `[core] version`）。
     pub core_bound: String,
 }
 

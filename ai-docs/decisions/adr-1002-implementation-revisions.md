@@ -77,9 +77,12 @@
 服务管理器说「运行中」而控制面连不上时，显示 `连不上中继（可能正在重启或更新中）`。
 **只在服务管理器说 running 时**才显示：仅仅「发现文件是旧的」不算（正常停掉的服务也会留下它）。
 
-## 10. 版本注入：`core-version.txt` 只用于「关于/界面显示」
+## 10. 版本注入：`bundle.toml` 只用于「关于/界面显示」
 
-`src-tauri/src/commands.rs` 用 `include_str!("../../core-version.txt")` 在编译期把它带进界面，
+`src-tauri/build.rs` 解析仓库根的 `bundle.toml`，用 `cargo:rustc-env=CORE_BOUND=…` 把它带进界面
+（`commands.rs` 里读的是 `env!("CORE_BOUND")`）。从前是 `include_str!("core-version.txt")`——
+换成 TOML 之后路径不能写死在源码里，必须走 build 脚本，所以多了这一步。
+`build.rs` 顺便断言它与 `Cargo.toml` 里 `peon-burrow-ipc` 的版本要求**同代**。
 真正的二进制来源由 `scripts/fetch-sidecar.sh`（CI 下载 + sha256 校验）决定。
 两处不一致时，**以安装包里的二进制为准** —— 所以 release 工作流里那一步校验不能省。
 
