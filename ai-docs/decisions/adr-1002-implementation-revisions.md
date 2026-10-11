@@ -89,6 +89,6 @@
 
 - 真·提权辅助可执行文件（`burrow-elevate`）：现在靠 `powershell Start-Process -Verb RunAs`
   调同一个二进制（core 仓库 `adr-0006` 后续 1）；
-- `ts-rs` / `specta` 自动生成前端类型：现在靠 `scripts/check-types.mjs` 对拍字段名（够用）；
+- `ts-rs` / `specta` 自动生成前端类型：现在靠 `scripts/check-types.mjs` 对拍**字段名 + 可空性（双向）**（够用）；
 - 界面国际化：文案已集中在 `src/locales/zh-CN.ts`，加语言只加文件；
 - 签名（Windows OV/EV、macOS notarize）：首版未签名，用户会看到 SmartScreen / Gatekeeper 提示。
