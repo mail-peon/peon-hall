@@ -19,10 +19,19 @@ read_config() {
     | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/'
 }
 
-core_ref="${1:-$(read_config version)}"
-triple="${2:-$(rustc --print host-tuple)}"
-repo="${CORE_REPO:-$(read_config repo)}"
+# ⚠️ 这里刻意**不用** `${1:-$(read_config version)}` / `${CORE_REPO:-$(read_config repo)}`
+#    这种「默认值里嵌函数调用」的写法：在 macOS 自带的 bash 3.2（`/bin/bash`）+ `set -u`
+#    下，它会报 `core_ref: unbound variable`，而且报的是**下一行**的 echo —— CI 实测
+#    （v0.1.4 的 macOS leg 就是这么死的）。拆成「先取参数、空了自己兜底」两步最稳。
+core_ref="${1-}"
+[ -n "$core_ref" ] || core_ref="$(read_config version)"
+triple="${2-}"
+[ -n "$triple" ] || triple="$(rustc --print host-tuple)"
+repo="${CORE_REPO-}"
+[ -n "$repo" ] || repo="$(read_config repo)"
 
+# 出问题时这一行能直接看出参数有没有被正确传进来
+echo "  args: \$1=[${1-}] \$2=[${2-}]  ->  core=$core_ref triple=$triple repo=$repo"
 [ -n "$core_ref" ] || { echo "bundle.toml 里读不到 core.version" >&2; exit 1; }
 [ -n "$repo" ] || { echo "bundle.toml 里读不到 core.repo" >&2; exit 1; }
 
