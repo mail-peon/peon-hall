@@ -103,8 +103,13 @@ jobs:
           fi
           ls -l "src-tauri/binaries/burrow-${{ matrix.target }}${suffix}"
 
-      # ⚠️ 不设 includeUpdaterJson、不给 TAURI_SIGNING_PRIVATE_KEY：
-      # 桌面端不做自更新（需求 G7），那两样只会制造「为什么没有 latest.json」的困惑。
+      # ⚠️ 不设 updater 相关的两样东西（桌面端不做自更新，需求 G7）：
+      #    它们只会制造「为什么 release 里有 latest.json / .sig」的困惑，而且
+      #    `verify-no-updater-artifacts` 那步会因此红。注意 v1.0.0 的默认值是 **true**
+      #    （旧版输入名叫 `includeUpdaterJson`，写它没用）。
+      # ⚠️ `tauriScript` 是「怎么调用 tauri CLI」，不是「用哪个包管理器」：
+      #    它按 `<tauriScript> build <args>` 拼命令，所以写 `pnpm` 会变成 `pnpm build --target …`
+      #    —— `--target` 落到前端 vite 上，直接 `Invalid target 'x86_64-…'`。
       - uses: tauri-apps/tauri-action@v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -112,7 +117,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
           releaseDraft: false
-          tauriScript: pnpm
+          tauriScript: pnpm tauri
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
           args: --target ${{ matrix.target }}
 
       - name: note the bundled core version in the job summary
