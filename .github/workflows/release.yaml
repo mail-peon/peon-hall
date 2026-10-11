@@ -41,7 +41,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 早失败：别等到打完包才发现 tag 与版本号不一致
       - name: tag must match package.json
@@ -69,8 +69,8 @@ jobs:
                                   librsvg2-dev patchelf libxslt1.1
 
       # 版本由 package.json 的 packageManager 决定（别在这里写死，两处会漂）
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -94,7 +94,7 @@ jobs:
 
       # ⚠️ 不设 includeUpdaterJson、不给 TAURI_SIGNING_PRIVATE_KEY：
       # 桌面端不做自更新（需求 G7），那两样只会制造「为什么没有 latest.json」的困惑。
-      - uses: tauri-apps/tauri-action@v0.5.20
+      - uses: tauri-apps/tauri-action@v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
