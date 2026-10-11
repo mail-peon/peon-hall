@@ -169,8 +169,20 @@ export const info = {
   },
   relayAddress: '扩展地址',
   version: '版本',
-  versionValue: (version: string | undefined, coreBound: string): string =>
-    version ? `v${version}（桌面端绑定 ${coreBound}）` : `桌面端 v${coreBound === '' ? '—' : ''}`,
+  /**
+   * 版本行。
+   *
+   * ⚠️ 中继没在跑时（`version === undefined`，最常见状态之一）从前渲染出的是
+   * 「桌面端 v」—— 因为兜底拼的是 `coreBound`，而它在三元里被拼成了空串（H-4）。
+   * 现在无论中继在不在跑，都至少能看到**桌面端自己的版本号**。
+   */
+  versionValue: (version: string | undefined, desktop: string, coreBound: string): string => {
+    const desktopText = desktop === '' ? '—' : `v${desktop}`
+    const bound = coreBound === '' ? '—' : coreBound
+    return version
+      ? `v${version}（桌面端 ${desktopText}，绑定 ${bound}）`
+      : `桌面端 ${desktopText}（绑定 ${bound}）`
+  },
   urlSource: {
     controlPlane: '来自运行中的中继',
     configFile: '来自配置文件',
@@ -248,6 +260,9 @@ export const drawer = {
   hintClosed: '点标题展开',
   clear: '清空',
   copy: '复制',
+  /** 复制成功 / 失败后的按钮文案（成功会自己变回来，H-6）。 */
+  copied: '已复制',
+  copyFailed: '复制失败',
   close: '收起',
   /** 打开抽屉的按钮。 */
   open: '查看命令行输出',

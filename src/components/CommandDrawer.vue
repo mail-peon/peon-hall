@@ -15,9 +15,9 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { Button as AButton, Space as ASpace } from 'ant-design-vue'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { onCommandEvent } from '../ipc'
+import { onCommandEvent, copyText } from '../ipc'
 import type { CommandEvent } from '../types'
 import { drawer } from '../locales/zh-CN'
 
@@ -28,6 +28,11 @@ const host = ref<HTMLDivElement | null>(null)
 const terminal = ref<Terminal | null>(null)
 const fitAddon = new FitAddon()
 const lineCount = ref(0)
+
+/** 复制按钮的瞬时状态（成功/失败都要让用户看见，H-6）。 */
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+/** 状态显示多久。 */
+const COPY_STATE_MS = 1500
 
 /** 把一行事件写进终端（命令、输出、退出码都进同一个视图）。 */
 function write(event: CommandEvent) {
@@ -67,7 +72,7 @@ function clear() {
   lineCount.value = 0
 }
 
-function copy() {
+async function copy() {
   const term = terminal.value
   if (!term) return
   // xterm 6 的 IBuffer 只有 getLine（没有 getLines），所以自己走一遍
@@ -76,8 +81,30 @@ function copy() {
   for (let y = 0; y < buffer.length; y += 1) {
     lines.push(buffer.getLine(y)?.translateToString(true) ?? '')
   }
-  void navigator.clipboard.writeText(lines.join('\n').trimEnd())
+
+  // ⚠️ 走 Tauri 的剪贴板插件（capabilities 里唯一为它开的权限），而不是 webview 的
+  // `navigator.clipboard`：后者在这台机器上可能被拒，而从前那句 `void …` 把 rejection
+  // 也吞了 —— 用户点「复制」毫无反应、也没有任何提示（H-6）。
+  try {
+    await copyText(lines.join('\n').trimEnd())
+    copyState.value = 'copied'
+  } catch (error) {
+    copyState.value = 'failed'
+    console.warn('[peon-hall] 复制命令行输出失败', error)
+  }
+  timers.push(
+    window.setTimeout(() => {
+      copyState.value = 'idle'
+    }, COPY_STATE_MS),
+  )
 }
+
+/** 复制按钮的文案：平时「复制」，点完给 1.5 秒的「已复制 / 复制失败」。 */
+const copyLabel = computed(() => {
+  if (copyState.value === 'copied') return drawer.copied
+  if (copyState.value === 'failed') return drawer.copyFailed
+  return drawer.copy
+})
 
 let stopListening: (() => void) | null = null
 const timers: number[] = []
@@ -140,7 +167,7 @@ watch(
         <span class="drawer-title">{{ drawer.title }}</span>
         <ASpace :size="4">
           <AButton size="small" type="text" @click="clear">{{ drawer.clear }}</AButton>
-          <AButton size="small" type="text" @click="copy">{{ drawer.copy }}</AButton>
+          <AButton size="small" type="text" @click="copy">{{ copyLabel }}</AButton>
           <AButton size="small" type="text" @click="emit('toggle', false)">
             {{ drawer.close }}
           </AButton>

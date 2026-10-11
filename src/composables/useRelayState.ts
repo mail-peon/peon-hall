@@ -92,6 +92,8 @@ export function useRelayState() {
   const relayUrl = ref('')
   const urlSource = ref<UrlSource>('default')
   const coreBound = ref('')
+  /** 桌面端自己的版本（`Snapshot.appVersion`；中继没在跑时版本行显示它，H-4）。 */
+  const desktopVersion = ref('')
   const sidecarPresent = ref(true)
 
   // ---- 界面自身的状态 ----
@@ -135,6 +137,8 @@ export function useRelayState() {
     relayUrl.value = next.relayUrl
     urlSource.value = next.urlSource
     coreBound.value = next.coreBound
+    // 中继没在跑时版本行就靠它（H-4）：Rust 一直在传，从前这里没存
+    desktopVersion.value = next.appVersion
     sidecarPresent.value = next.sidecarPresent
   }
 
@@ -491,9 +495,13 @@ export function useRelayState() {
     return misc.autostartDisabled
   })
 
-  /** 中继没在跑就不显示它的版本号（验收 #12）。 */
+  /** 中继没在跑就不显示它的版本号（验收 #12）；桌面端自己的版本号永远显示。 */
   const versionText = computed(() =>
-    infoText.versionValue(processStatus.value?.version, coreBound.value),
+    infoText.versionValue(
+      processStatus.value?.version,
+      desktopVersion.value,
+      coreBound.value,
+    ),
   )
 
   // ---- 诊断 ----
