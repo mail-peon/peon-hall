@@ -105,7 +105,7 @@ cd ../peon-hall && pnpm tauri dev
 | --- | --- |
 | `scripts/sync-sidecar.ps1` / `.sh` | 开发期：把本地 core 二进制拷成 `src-tauri/binaries/burrow-<triple>[.exe]` |
 | `scripts/fetch-sidecar.sh` | CI/发版：从 core release 下载并**校验 sha256** 后放到同一位置 |
-| `scripts/bump-version.mjs` | `pnpm version:bump 0.1.1`：一次改 `package.json` + `tauri.conf.json` + `src-tauri/Cargo.toml` |
+| `bump.config.ts` + `pnpm release`（bumpp） | 改版本：一次改 `package.json` + `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`，确认后自动 commit + tag + push |
 | `scripts/check-types.mjs` | 对拍前端类型与 Rust 字段名（防「界面状态全是空的」） |
 
 `src-tauri/binaries/` **不入库**：发版时用的二进制必须来自 core release 且校验过 sha256。

@@ -13,7 +13,8 @@
 | 位置 | 谁读 | 怎么保证一致 |
 | --- | --- | --- |
 | `package.json` | npm 生态、发版脚本 | **源头** |
-| `src-tauri/tauri.conf.json` 的 `version` | Tauri 打进安装包元数据与文件名 | ① 本地：`pnpm version:bump` 脚本同时改两处；② CI：断言两者相等 |
+| `src-tauri/tauri.conf.json` 的 `version` | Tauri 打进安装包元数据与文件名 | ① 本地：`pnpm release`（bumpp，配置在 [`bump.config.ts`](../bump.config.ts)）一次改三处；② CI：断言三者相等 |
+| `src-tauri/Cargo.toml` 的 `version` | 只有 `cargo metadata` 与打包日志会看它 | 同上（在 `bump.config.ts` 的 `files` 里；bumpp 对 TOML 走文本替换） |
 | git tag | CI 触发 | CI：断言 `v${package.json.version} == tag` |
 
 ⚠️ 参考项目里踩过的两个极端：
@@ -42,14 +43,12 @@ pnpm typecheck && pnpm build          # 前端
 cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
 cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
 
-# 3) 改版本（同时改 package.json 与 tauri.conf.json）
-pnpm version:bump 0.1.1
+# 3) 改版本（一次改三处：package.json / tauri.conf.json / Cargo.toml）
+pnpm release
+#    它交互式问你要升哪个版本（major/minor/patch/…），确认后自己 commit + tag + push。
+#    只想改文件不提交：pnpm release --no-commit --no-tag --no-push
 
-# 4) 提交 + 打 tag + 推
-git add -A && git commit -m "chore: release v0.1.1"
-git tag v0.1.1 && git push origin main --tags
-
-# 5) 等 CI
+# 4) 等 CI（tag 是 bumpp 推上去的，它才是 release.yaml 的触发条件）
 gh run watch
 ```
 

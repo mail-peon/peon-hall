@@ -10,7 +10,7 @@
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "version:bump": "node scripts/bump-version.mjs"
+    "release": "bumpp"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.2",
@@ -25,6 +25,7 @@
     "@unocss/preset-wind4": "^66.10.5",
     "@unocss/reset": "^66.10.5",
     "@vitejs/plugin-vue": "^6.0.9",
+    "bumpp": "^12.3.0",
     "typescript": "^5.9.0",
     "unocss": "^66.10.5",
     "vite": "^8.3.4",
