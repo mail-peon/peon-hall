@@ -2350,7 +2350,7 @@ dependencies = [
 
 [[package]]
 name = "peon-hall"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "directories",
  "peon-burrow-ipc",
