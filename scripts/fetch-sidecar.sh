@@ -68,31 +68,55 @@ fi
 # 失败时先看这一行：下载到的到底是哪几个文件（空的话说明 release/tag/pattern 有一个不对）
 echo "  已下载: $(ls -1 "$work" 2>/dev/null | tr '\n' ' ')"
 
-# 校验和工具：Linux 与 Git Bash 有 `sha256sum`，**macOS 上没有它**（只有 `shasum -a 256`）
-# —— core 的 `package-release.sh` 也是这么兜的；少了这一层，macOS 那两个 leg 会校验失败。
-if command -v sha256sum > /dev/null 2>&1; then
-  sum_check=(sha256sum -c)
-else
-  sum_check=(shasum -a 256 -c)
-fi
+# 归档名先定下来（校验要指名道姓地验它）
+archive="$(ls "$work"/peon-burrow-"$triple".* 2>/dev/null | grep -v '\.sha256$' | head -1 || true)"
+[ -n "$archive" ] || { echo "没下载到 peon-burrow-$triple 的归档" >&2; exit 1; }
+archive_name="$(basename "$archive")"
 
-# ⚠️ 校验和优先用合并清单，没有就退回归档自带的 `.sha256`。
+# 算一个文件的 sha256（小写十六进制）。三种工具任选其一，**刻意不用 `-c`**：
+#   `sha256sum -c` / `shasum -c` 两家的输出格式与退出码有细微差别，而 macOS 上干脆
+#   没有 sha256sum。真踩过：脚本在 `mkdir -p src-tauri/binaries` 之前就死了，CI 里
+#   只看到下游那句「the sidecar … is missing」，完全查不出原因。
+sha256_of() {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum > /dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    openssl dgst -sha256 "$1" | awk '{print $NF}'
+  fi
+}
+
+# 从校验和文件（格式 `<hash>  <name>`）里取 $archive_name 的期望值，与实测对比。
+verify_archive() {
+  expected="$(awk -v name="$archive_name" \
+    '{ n = $2; sub(/^\*/, "", n); if (n == name) { print $1; exit } }' "$1")"
+  [ -n "$expected" ] || { echo "$(basename "$1") 里没有 $archive_name" >&2; exit 1; }
+  actual="$(sha256_of "$archive")"
+  if [ "$expected" != "$actual" ]; then
+    echo "sha256 不匹配：$archive_name" >&2
+    echo "  期望 $expected" >&2
+    echo "  实测 $actual" >&2
+    exit 1
+  fi
+  echo "  $archive_name: OK"
+}
+
+# ⚠️ 校验和优先用合并清单 SHA256SUMS，没有就退回归档自带的 `.sha256`。
 #    这里**不能**硬依赖 `SHA256SUMS`：core 到 v0.1.0 为止都没生成它（它的 ai-docs 里
 #    承诺了「一个 SHA256SUMS」，但 scripts/ 与 assets.yaml 里都没有那一步），
 #    硬依赖会让第一个 bundle job 直接红在「没拿到 SHA256SUMS」。
 if [ -f "$work/SHA256SUMS" ]; then
-  # 只校验我们这个平台的产物（清单里还有别的平台）
-  (cd "$work" && grep "peon-burrow-$triple" SHA256SUMS > mine.sums && "${sum_check[@]}" mine.sums)
+  verify_archive "$work/SHA256SUMS"
 else
   sum="$(ls "$work"/peon-burrow-"$triple".*.sha256 2>/dev/null | head -1 || true)"
   [ -n "$sum" ] || {
     echo "既没有 SHA256SUMS 也没有单文件校验和：$repo 的 $core_ref 资产不完整" >&2
     exit 1
   }
-  (cd "$work" && "${sum_check[@]}" "$(basename "$sum")")
+  verify_archive "$sum"
 fi
 
-archive="$(ls "$work"/peon-burrow-"$triple".* | grep -v sha256 | head -1)"
 mkdir -p "$work/unpacked"
 case "$archive" in
   *.zip) (cd "$work/unpacked" && unzip -q "$archive") ;;
