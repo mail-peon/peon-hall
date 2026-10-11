@@ -140,7 +140,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          files="$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name')"
+          # ⚠️ 必须显式给 `--repo`：这个 job **没有 checkout**，工作目录里没有 `.git`，
+          #    而 `gh` 默认要从本地 git remote 推断仓库 —— 否则直接
+          #    「failed to run git: fatal: not a git repository」。
+          files="$(gh release view "$GITHUB_REF_NAME" --repo "${{ github.repository }}" \
+            --json assets -q '.assets[].name')"
           echo "$files"
           if echo "$files" | grep -Eq '\.sig$|latest\.json$'; then
             echo "::error::no self-update on desktop: the release must not contain .sig or latest.json"
