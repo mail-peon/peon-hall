@@ -30,6 +30,27 @@ jobs:
       - run: pnpm build
       # Rust 改了字段名时前端不会编译报错，靠这一步挡住（ADR-1001 Q2）
       - run: node scripts/check-types.mjs
+
+      # ⚠️ core-version.txt 是人手维护的（core 发版后要改），写错时**第一个 bundle job 才会红**
+      #    —— 这里提前验：那个 tag 的资产真的能下载。
+      #    真机踩过：它一直停在 `v0.0.0`，而 core 的 tag 从 `v0.0.1` 才开始（等于必红）。
+      - name: the pinned core version must be downloadable
+        shell: bash
+        run: |
+          set -euo pipefail
+          core="$(tr -d '[:space:]' < core-version.txt)"
+          echo "core-version.txt = $core"
+          base="https://github.com/mail-peon/peon-burrow/releases/download/$core"
+          # 只探 fetch-sidecar.sh 真正要用的三个：归档、它的单文件校验和、以及 core 自更新的清单
+          for name in \
+            peon-burrow-x86_64-unknown-linux-gnu.tar.gz \
+            peon-burrow-x86_64-unknown-linux-gnu.tar.gz.sha256 \
+            latest.json; do
+            curl -fsSLI "$base/$name" > /dev/null
+            echo "  ok $name"
+          done
+          echo "$core has the assets the bundler needs"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
