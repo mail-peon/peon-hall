@@ -10,7 +10,8 @@
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release": "bumpp"
+    "release": "bumpp",
+    "retag": "cd src-tauri && cargo bumpp --retag"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.2",
