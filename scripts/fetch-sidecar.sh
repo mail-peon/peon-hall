@@ -40,12 +40,15 @@ trap 'rm -rf "$work"' EXIT
 
 # 出错时把「死在哪一行 + 手上有什么」打出来。CI 上只看到下游那句
 # 「the sidecar … is missing」根本查不出原因（真踩过：macOS 上 sha256sum 不存在）。
-trap 'code=$?; echo "fetch-sidecar: 失败（exit $code）于 ${BASH_SOURCE[0]}:${LINENO}" >&2;
+trap 'code=$?; echo "fetch-sidecar: 失败（exit ${code}）于 ${BASH_SOURCE[0]}:${LINENO}" >&2;
       echo "  root=$root" >&2;
       echo "  work 里有什么：$(ls -1 "$work" 2>/dev/null | tr "\n" " ")" >&2;
       echo "  目标目录：$(ls -ld "$root/src-tauri/binaries" 2>&1)" >&2' ERR
 
-echo "取 $repo 的 $core_ref（$triple）"
+# ⚠️ 变量一律写 `${x}`：**`$x` 紧跟中文/全角字符**时，macOS 自带的 bash 3.2 会把
+#    那个多字节字符的头一个字节吃进变量名里，报成 `core_ref: unbound variable`
+#    （CI 实测，Linux 的 bash 5 不会犯）。下面每一行都别再改回去。
+echo "取 $repo 的 ${core_ref}（${triple}）"
 # ⚠️ 优先 curl：core 是公开仓库，https 直连**不需要任何 token**（少一个变数），
 #    而且这条路是本地逐 target 实测跑通的。`gh` 只作兜底 —— 它要 GH_TOKEN，
 #    而 CI 里那个 token 属于本仓库，去读另一个仓库的资源可能被当成 404。
@@ -140,4 +143,4 @@ mkdir -p "$root/src-tauri/binaries"
 suffix=""
 case "$triple" in *windows*) suffix=".exe" ;; esac
 cp "$binary" "$root/src-tauri/binaries/burrow-$triple$suffix"
-echo "✅ src-tauri/binaries/burrow-$triple$suffix（来自 $core_ref，sha256 已校验）"
+echo "✅ src-tauri/binaries/burrow-${triple}${suffix}（来自 ${core_ref}，sha256 已校验）"

@@ -104,6 +104,22 @@ jobs:
               fail=1
             fi
           done
+
+          # 规则三：`$var` 后面不许紧跟非 ASCII 字符 —— macOS 自带的 bash 3.2 会把那个多字节
+          # 字符的头一个字节吃进变量名，报成 `xxx: unbound variable`（真踩过：一句
+          # `echo "取 $repo 的 $core_ref（$triple）"` 让 macOS 的两个 leg 连红两个版本，
+          # Linux/macOS 上的 bash 5 都不犯，所以本地怎么测都是好的）。写法改成 `${var}`。
+          for file in scripts/*.sh; do
+            [ -f "$file" ] || continue
+            # ⚠️ 用 ERE + `[^ -~]`，**不要**用 `grep -P`：后者在 locale 不对的环境里会
+            # 直接报 "supports only unibyte and UTF-8 locales" 然后**静默放过**（本地实测撞到，
+            # 差点交出一个假守卫）。`LC_ALL=C` 让它按字节比对，跨环境行为一致。
+            if LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' "$file"; then
+              echo "::error::$file has \$var immediately followed by a non-ASCII character; write \${var} instead (macOS bash 3.2 misparses it)"
+              fail=1
+            fi
+          done
+
           if [ "$fail" -ne 0 ]; then exit 1; fi
           echo "workflow files look good"
 
