@@ -108,7 +108,11 @@ jobs:
       - name: assert there is no updater dependency or config
         run: |
           set -euo pipefail
-          if grep -riE 'updater' src-tauri/Cargo.toml src-tauri/tauri.conf.json src/ 2>/dev/null; then
+          # ⚠️ 要排除 `"createUpdaterArtifacts": false` —— 那是**关掉**更新产物（与这条断言
+          # 同一个目的），而它是唯一一处合法出现 "updater" 的地方。不过滤的话这条守卫
+          # 一直是红的（CI 只在打 tag 时跑，所以漂了很久没人发现）。
+          if grep -riE 'updater' src-tauri/Cargo.toml src-tauri/tauri.conf.json src/ 2>/dev/null \
+             | grep -vE '"createUpdaterArtifacts"[[:space:]]*:[[:space:]]*false'; then
             echo "::error::the desktop app has no self-update: an updater reference was found"
             exit 1
           fi
