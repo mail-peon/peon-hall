@@ -139,16 +139,23 @@ pub struct Heartbeat {
 #[tauri::command]
 pub async fn snapshot(app: AppHandle) -> Result<Snapshot, CommandError> {
     let heart = heartbeat().await?;
-    // 服务状态查不到不该让整个快照失败：卡片显示「未知」比整页空白好
-    let service = service_status(app.clone())
-        .await
-        .unwrap_or_else(|_| ServiceStatus::not_installed("peon-burrow"));
 
-    let phase = Snapshot::phase_of(&service, heart.process.as_ref(), sidecar::present());
+    // ⚠️ 读不到服务状态**不能**当「没安装」（`ai-docs/01-ui-and-states.md § 5`：
+    // 「读取状态本身失败 → 显示原始原因」）。从前这里是
+    // `unwrap_or_else(|_| ServiceStatus::not_installed(...))`，于是中继的返回看不懂
+    // （版本不匹配 = `Unparsable`）时卡片写「未安装」，用户会去点【安装服务】，
+    // 而真正该做的是升级桌面端。现在原样带着原因走，界面显示「读不到服务状态」。
+    let (service, service_error) = match service_status(app.clone()).await {
+        Ok(status) => (Some(status), None),
+        Err(error) => (None, Some(error.message)),
+    };
+
+    let phase = Snapshot::phase_of(service.as_ref(), heart.process.as_ref(), sidecar::present());
 
     Ok(Snapshot {
         phase,
         service,
+        service_error,
         process: heart.process,
         control_error: heart.control_error,
         discovery: heart.discovery,
@@ -162,22 +169,43 @@ pub async fn snapshot(app: AppHandle) -> Result<Snapshot, CommandError> {
 }
 
 /// 只要控制面状态。
+///
+/// ⚠️ 这是**每 2 秒**都要跑的那条路，所以它只能做「读文件 + 连一次控制面」：
+/// 「文件里那个进程还在吗」是一次进程调用（Windows 上是 `tasklist`），
+/// 只在控制面**连不上之后**才做（见 `discovery` 的文件头与 H-1 的取舍）。
 #[tauri::command]
 pub async fn heartbeat() -> Result<Heartbeat, CommandError> {
     let discovery = discovery::load();
-    let detail = discovery.describe();
 
     let (process, control_error, state) = match &discovery {
-        Discovery::Fresh(endpoint) => match control::status(endpoint).await {
+        Discovery::Fresh { endpoint, pid } => match control::status(endpoint).await {
             Ok(report) => (Some(report.process), None, DiscoveryState::Fresh),
-            Err(error) => (None, Some(error.message()), DiscoveryState::Fresh),
+            // 控制面是权威：连不上之后才轮到问「文件里记的那个进程还在吗」。
+            // 它不在了 → 陈旧（说清是哪个 pid 没了）；还在 → 多半正在重启/更新。
+            Err(error) => {
+                let gone = match *pid {
+                    Some(pid) => pid_gone_off_thread(pid).await,
+                    None => false,
+                };
+                match pid {
+                    Some(pid) if gone => (
+                        None,
+                        Some(discovery::stale_detail(*pid)),
+                        DiscoveryState::Stale,
+                    ),
+                    _ => (None, Some(error.message()), DiscoveryState::Fresh),
+                }
+            }
         },
-        Discovery::Stale { .. } => (
-            None,
-            Some("发现文件是旧的：中继可能正在重启，或者已经被停掉".to_owned()),
-            DiscoveryState::Stale,
-        ),
         Discovery::Missing => (None, None, DiscoveryState::Missing),
+    };
+
+    // 说明文案跟着**最终判定**走：判成陈旧时要说出是哪个进程没了
+    let detail = match (state, &discovery) {
+        (DiscoveryState::Stale, Discovery::Fresh { pid: Some(pid), .. }) => {
+            discovery::stale_detail(*pid)
+        }
+        _ => discovery.describe(),
     };
 
     // 地址优先用控制面报的（最准），其次配置文件，最后默认值
@@ -351,16 +379,14 @@ pub async fn service_action(
         ));
     }
 
-    // 停止优先走控制面：让服务自己停，**不需要提权**（系统服务也一样）
-    if action == ServiceAction::Stop {
-        if let Discovery::Fresh(endpoint) = discovery::load() {
-            let request = Request::Stop {
-                reason: Some("桌面端".to_owned()),
-            };
-            if control::request(&endpoint, request).await.is_ok() {
-                return Ok(ActionResult::done("已停止（通过控制面）", None));
-            }
-        }
+    // 「停止」优先走控制面：让服务自己停，**不需要提权**（系统服务也一样，见
+    // `ai-docs/01-ui-and-states.md § 3`）。走到下面那段的停止都是**降级**：
+    // 控制面连不上 → `service stop`，而系统服务下那一步要管理员（`sc stop`）。
+    // ⚠️ 从前没有这条降级，于是系统服务在控制面不可连时点【停止】只会拿到
+    // 一句 access denied（提权判定当时只写了「Stop 不需要提权」）。
+    let stopped_by_control_plane = action == ServiceAction::Stop && stop_via_control_plane().await;
+    if stopped_by_control_plane {
+        return Ok(ActionResult::done("已停止（通过控制面）", None));
     }
 
     // 级别：界面可以覆盖（系统服务是高级选项），默认按当前状态
@@ -372,7 +398,12 @@ pub async fn service_action(
     let autostart = autostart.unwrap_or(true);
     let args = sidecar::action_args(action, level, autostart);
 
-    let output = if sidecar::needs_elevation(action, level) {
+    // 提权判定：一般动作只看级别；「停止」能走到这里就说明是降级路径，
+    // 系统服务下要一次管理员（`sidecar::fallback_stop_needs_elevation`）。
+    let elevated = sidecar::needs_elevation(action, level)
+        || (action == ServiceAction::Stop && sidecar::fallback_stop_needs_elevation(level));
+
+    let output = if elevated {
         let exe = sidecar::sidecar_path()
             .ok_or_else(|| CommandError::new(ErrorCode::SidecarMissing, "定位不到中继程序"))?;
         let outcome = tauri::async_runtime::spawn_blocking(move || {
@@ -404,7 +435,44 @@ pub async fn service_action(
     };
 
     let parsed = sidecar::parse_action(&output).map_err(CommandError::from_sidecar)?;
-    Ok(ActionResult::done(human_action(action), parsed))
+    // 停止的降级路径（提权跑 `service stop`）在结果里说清走了哪条路：
+    // 用户刚点过一次 UAC，值得知道它是为什么弹的。
+    let message: &str = if action == ServiceAction::Stop && elevated {
+        "已停止（控制面连不上，改用管理员权限停服务）"
+    } else {
+        human_action(action)
+    };
+    Ok(ActionResult::done(message, parsed))
+}
+
+/// 让中继**自己**停下来（控制面 `stop`）。返回它是否答应了。
+///
+/// 这条路不需要提权：服务进程收到控制码后自己退出（`ai-docs/01-ui-and-states.md § 3`）。
+/// 连不上就返回 `false`，由调用方降级到 `service stop`。
+async fn stop_via_control_plane() -> bool {
+    let Discovery::Fresh { endpoint, .. } = discovery::load() else {
+        return false;
+    };
+    control::request(
+        &endpoint,
+        Request::Stop {
+            reason: Some("桌面端".to_owned()),
+        },
+    )
+    .await
+    .is_ok()
+}
+
+/// 「那个进程还在吗」——**挪到线程池上问**。
+///
+/// `discovery::pid_gone` 是一次进程调用（Windows 上是 `tasklist`，实测 126–159ms），
+/// 直接在 async 命令里同步调会占着运行时的工作线程。中继那些进程调用
+/// （`service status` / 五个动作）都走 `spawn_blocking`，这里保持一致。
+async fn pid_gone_off_thread(pid: u32) -> bool {
+    tauri::async_runtime::spawn_blocking(move || discovery::pid_gone(pid))
+        .await
+        // 线程池挂了（不该发生）：当作「还在」，宁可多试一次连接
+        .unwrap_or(false)
 }
 
 /// 开机自启开关。
@@ -467,7 +535,7 @@ pub async fn control_command(
         CommandError::new(ErrorCode::Failed, format!("不支持的控制面命令：{command}"))
     })?;
 
-    let Discovery::Fresh(endpoint) = discovery::load() else {
+    let Discovery::Fresh { endpoint, .. } = discovery::load() else {
         return Err(CommandError::new(
             ErrorCode::ControlUnreachable,
             "中继没有在运行。点【启动】。",

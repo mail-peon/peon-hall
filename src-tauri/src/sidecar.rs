@@ -130,8 +130,21 @@ pub fn autostart_args(on: bool) -> Vec<String> {
 ///
 /// 用户级**一切都不需要**（零 UAC 是主路径）；系统级只有「停止」可以走控制面免提权
 /// （让服务自己停），其余都要经过提权辅助。
+///
+/// ⚠️ 「停止」的免提权**只对控制面那条路成立**。控制面连不上时会降级成 `service stop`
+/// （`sc stop`），那一步在系统服务下要管理员 —— 见 [`fallback_stop_needs_elevation`]
+/// 与 `commands::service_action`。
 pub fn needs_elevation(action: ServiceAction, level: ServiceLevel) -> bool {
     matches!(level, ServiceLevel::System) && !matches!(action, ServiceAction::Stop)
+}
+
+/// 降级路径（控制面停不下来 → 跑 `service stop`）要不要提权。
+///
+/// 单独写成函数是为了让这条语义**能单测**：系统服务下 `sc stop` 需要管理员，
+/// 用户级下 `schtasks /End` / `systemctl --user stop` 不需要。
+/// `ai-docs/01-ui-and-states.md § 3` 承诺过这条降级。
+pub fn fallback_stop_needs_elevation(level: ServiceLevel) -> bool {
+    matches!(level, ServiceLevel::System)
 }
 
 /// `--mode` 的取值。
@@ -420,6 +433,18 @@ mod tests {
         assert!(needs_elevation(Restart, ServiceLevel::System));
         // 停系统服务走控制面（让服务自己停），所以不需要提权
         assert!(!needs_elevation(Stop, ServiceLevel::System));
+    }
+
+    #[test]
+    fn stopping_a_system_service_needs_elevation_only_on_the_fallback_path() {
+        // H-3：控制面连不上时降级成 `service stop`；系统服务下 `sc stop` 要管理员
+        //（`01-ui-and-states.md § 3` 的承诺），用户级下不要。
+        assert!(fallback_stop_needs_elevation(ServiceLevel::System));
+        assert!(!fallback_stop_needs_elevation(ServiceLevel::User));
+
+        // 「停止」在系统级：控制面这条路不要提权，降级那条要 —— 两者合起来才是完整语义
+        assert!(!needs_elevation(ServiceAction::Stop, ServiceLevel::System));
+        assert!(fallback_stop_needs_elevation(ServiceLevel::System));
     }
 
     #[test]

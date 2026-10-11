@@ -6,8 +6,9 @@
 //! | --- | --- |
 //! | 服务注册了吗 / 自启开了吗 / 安装级别 | 中继二进制的 `service status --json`（[`sidecar`]） |
 //! | 进程活着吗 / 端口 / 版本 / 连接数 | 控制面（[`control`]，协议实现来自 `peon-burrow-ipc`） |
-//! | 现在是什么状态（四种组合） | [`snapshot::Snapshot::phase_of`]（**可单测的纯函数**） |
-//! | 需要提权吗 | [`sidecar::needs_elevation`] |
+//! | 现在是什么状态 | [`snapshot::Snapshot::phase_of`]（**可单测的纯函数**：四种组合 + 安装不完整 + 读不到服务状态） |
+//! | 发现文件新鲜吗 | [`discovery`]（读文件便宜、判进程贵 —— 陈旧判定只在控制面连不上之后做） |
+//! | 需要提权吗 | [`sidecar::needs_elevation`]（系统级「停止」的降级路径另见 [`sidecar::fallback_stop_needs_elevation`]） |
 //!
 //! 界面只渲染这些；所有系统动作都在 [`commands`] 里，前端没法执行任意命令。
 

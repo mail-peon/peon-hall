@@ -8,7 +8,7 @@ import { computed } from 'vue'
 const props = defineProps<{
   title: string
   subtitle: string
-  /** 状态色名（running / stopped / foreground / none）。 */
+  /** 状态色名（running / stopped / foreground / unknown / none）。 */
   tone: string
 }>()
 
@@ -19,6 +19,9 @@ const badgeStatus = computed(() => {
       return 'success'
     case 'foreground':
       return 'processing'
+    // 「读不到服务状态」是**需要看一眼**的状态（黄），不是「未安装/安装不完整」的红
+    case 'unknown':
+      return 'warning'
     case 'none':
       return 'error'
     default:

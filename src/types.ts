@@ -12,6 +12,7 @@ export type Phase =
   | 'foreground' // 未安装 + 控制面可连（终端里跑着）
   | 'notInstalled' // 未安装 + 连不上
   | 'incomplete' // sidecar 不在（安装包损坏）
+  | 'serviceUnknown' // 读不到服务管理器的状态（≠ 未安装，见 ai-docs/01-ui-and-states.md § 5）
 
 /** 扩展地址是从哪来的。 */
 export type UrlSource = 'controlPlane' | 'configFile' | 'default'
@@ -56,7 +57,10 @@ export interface ProcessStatus {
 /** 一次完整快照（打开窗口 / 获得焦点 / 每次操作结束后拉）。 */
 export interface Snapshot {
   phase: Phase
-  service: ServiceStatus
+  /** `null` = 这一次**没读到**服务状态（原因在 `serviceError`），不是「未安装」。 */
+  service: ServiceStatus | null
+  /** 读服务状态失败时的原始原因（人话，直接显示给用户）。 */
+  serviceError: string | null
   process: ProcessStatus | null
   controlError: string | null
   discovery: DiscoveryState

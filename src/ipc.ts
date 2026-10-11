@@ -15,6 +15,7 @@ import type {
   Heartbeat,
   ServiceActionName,
   ServiceLevel,
+  ServiceStatus,
   Snapshot,
 } from './types'
 
@@ -40,9 +41,13 @@ export function heartbeat(): Promise<Heartbeat> {
   return invoke<Heartbeat>('heartbeat')
 }
 
-/** 只问服务管理器（每 5 次轮询一次）。 */
-export function serviceStatus() {
-  return invoke<Snapshot['service']>('service_status')
+/** 只问服务管理器（每 5 次轮询一次）。
+ *
+ * ⚠️ 返回类型**不是** `Snapshot['service']`：那一个现在可以是 `null`（快照会用
+ * `serviceError` 说明「这一轮没读到」），而这个命令读不到是**抛错**，不会返回 null。
+ */
+export function serviceStatus(): Promise<ServiceStatus> {
+  return invoke<ServiceStatus>('service_status')
 }
 
 /** 五个操作之一。`mode` 只在安装/系统服务时才需要传。 */

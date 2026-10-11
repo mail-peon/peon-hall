@@ -17,10 +17,14 @@ use peon_burrow_ipc_types::Request;
 use peon_hall_lib::{control, discovery, sidecar};
 
 /// 已经有一个活着的中继在跑吗（那就不要打扰它）。
+///
+/// ⚠️ 「文件在」不等于「它在跑」（`discovery` 的文件头）：换个说法 —— 文件在**且**
+/// 它记的那个进程还活着，才算真有实例。老版本写的文件没有 pid，保守当作它在跑。
 fn an_instance_is_already_running() -> bool {
     match discovery::load() {
-        discovery::Discovery::Fresh(_) => true,
-        discovery::Discovery::Stale { .. } | discovery::Discovery::Missing => false,
+        discovery::Discovery::Fresh { pid: Some(pid), .. } => !discovery::pid_gone(pid),
+        discovery::Discovery::Fresh { pid: None, .. } => true,
+        discovery::Discovery::Missing => false,
     }
 }
 
@@ -66,7 +70,7 @@ fn it_talks_to_a_real_relay_end_to_end() {
         // 等发现文件出现（中继要先建监听、写文件）
         let deadline = Instant::now() + Duration::from_secs(10);
         let endpoint = loop {
-            if let discovery::Discovery::Fresh(endpoint) = discovery::load() {
+            if let discovery::Discovery::Fresh { endpoint, .. } = discovery::load() {
                 break endpoint;
             }
             if Instant::now() > deadline {
@@ -121,7 +125,7 @@ fn it_talks_to_a_real_relay_end_to_end() {
         // 停完之后应当连不上了（发现文件被清掉，或者进程已退出）
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let still_fresh = matches!(discovery::load(), discovery::Discovery::Fresh(_));
+            let still_fresh = matches!(discovery::load(), discovery::Discovery::Fresh { .. });
             let still_alive = control::status(&endpoint).await.is_ok();
             if !still_fresh && !still_alive {
                 break;

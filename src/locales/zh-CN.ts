@@ -62,12 +62,23 @@ export const phaseText: Record<
     secondary: null,
     tone: 'none',
   },
+  serviceUnknown: {
+    // H-2：读不到服务状态**不是**「未安装」（§ 5）。副标题给原始原因（人话），
+    // 别加工 —— 最典型的成因是桌面端与 core 版本不匹配，用户该做的是升级。
+    title: '读不到服务状态',
+    subtitle: ({ serviceError }) => serviceError ?? '服务管理器没有正常回答',
+    primary: null,
+    secondary: null,
+    tone: 'unknown',
+  },
 }
 
 /** 拼副标题时要用的数据。 */
 export interface PhaseContext {
   process: { port: number; version: string; connections: number } | null
   service: { lastExitCode?: number }
+  /** 读不到服务状态时的原始原因（`serviceUnknown` 的副标题要用）。 */
+  serviceError: string | null
 }
 
 /** 五个操作。 */
@@ -116,12 +127,16 @@ export const disabledReasonByPhase: Record<
   },
   // 安装不完整时五个操作全禁用，原因统一用 notice.sidecarMissing
   incomplete: {},
+  // 读不到服务状态时五个操作全禁用，原因统一用 misc.serviceUnknownDisabled
+  //（不知道装没装，就不该让用户点「安装服务」——那正是要把这两种情况分开的原因）
+  serviceUnknown: {},
 }
 
 /** 高级选项：装成系统服务（默认的用户级安装不需要管理员权限）。 */
 export const advanced = {
   title: '高级：安装为系统服务',
-  hint: '系统服务在所有人登录时都能收信，代价是安装 / 启动 / 停止都要管理员权限（会弹一次授权框）。日常使用用上面的【安装服务】就够了。',
+  // H-3：「停止」正常走控制面，不需要管理员；只有控制面连不上、降级去 `sc stop` 时才要一次授权
+  hint: '系统服务在所有人登录时都能收信，代价是安装 / 卸载 / 启动要管理员权限（会弹一次授权框）。停服务不用 —— 让服务自己停就行（只有连不上它的时候，才降级要一次授权）。日常使用用上面的【安装服务】就够了。',
   installSystem: '安装为系统服务',
   installSystemBusy: '正在安装系统服务…',
 }
@@ -178,6 +193,17 @@ export const notice = {
   sidecarMissing: '安装不完整：缺少中继程序。请重新安装 peon-hall',
   versionMismatch: '中继的返回看不懂：可能是版本不匹配，请更新 peon-hall',
   updating: '正在更新并重启中继…（扩展会在几秒内自动重连）',
+  /** H-2：读不到服务状态时的那条黄条（原始原因在卡片副标题上，这里只给诊断入口）。 */
+  serviceUnknown: '读不到服务状态：服务管理器没有正常回答，先看诊断',
+  /**
+   * H-7：安装失败**但注册项留下了**（「已注册但没在跑」）时的那句话。
+   *
+   * 说清事实（注册项还在），并把决定权交给用户：修，或者点【撤销安装】撤掉。
+   * 不自动反注册 —— 一次慢启动不该变成「装的东西没了」。
+   */
+  installLeftover: (reason: string) =>
+    `安装没有完成：${reason} —— 服务已经注册、中继没有在运行（注册项还留在系统里）。可以点【撤销安装】撤掉它，或者修好原因后重试。`,
+  undoInstall: '撤销安装',
 }
 
 /** 诊断视图。 */
@@ -211,6 +237,8 @@ export const misc = {
   actionNotAvailable: '当前状态用不到这个操作',
   noAddress: '还没读到扩展地址',
   autostartDisabled: '把中继装成服务后才能设置开机自启',
+  /** 读不到服务状态时五个操作的统一禁用原因（不知道装没装，就别让用户点安装）。 */
+  serviceUnknownDisabled: '读不到服务状态，先点【查看诊断】弄清楚再说',
 }
 
 /** 命令抽屉（CLI 输出）。 */

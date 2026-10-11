@@ -21,6 +21,12 @@ pub enum Phase {
     NotInstalled,
     /// sidecar 不在（安装包损坏 / 被删）。
     Incomplete,
+    /// **读不到**服务管理器的状态（`service status --json` 失败）。
+    ///
+    /// ⚠️ 这不是「未安装」（`ai-docs/01-ui-and-states.md § 5`）：最典型的成因是
+    /// 中继的返回看不懂（桌面端与 core 版本不匹配）。把它们混在一起，用户会去点
+    /// 【安装服务】，而真正该做的是升级桌面端。
+    ServiceUnknown,
 }
 
 /// 地址是从哪来的（界面上要如实说明，别让人以为一定读到了配置）。
@@ -54,7 +60,14 @@ pub struct Snapshot {
     /// 状态组合（界面主文案）。
     pub phase: Phase,
     /// 服务管理器看到的状态（来自 sidecar 的 `service status --json`）。
-    pub service: ServiceStatus,
+    ///
+    /// `None` = **这一次没读到**（原因在 [`Snapshot::service_error`]），不是「未安装」。
+    pub service: Option<ServiceStatus>,
+    /// 读服务状态失败时的原始原因（`None` = 读到了）。
+    ///
+    /// 直接给用户看（`ai-docs/01-ui-and-states.md § 5`：「读取状态本身失败 → 显示原始原因」），
+    /// 所以它必须在 `commands` 里就是人话 —— 用的就是 `CommandError::message`。
+    pub service_error: Option<String>,
     /// 控制面看到的进程状态（`None` = 连不上）。
     pub process: Option<ProcessStatus>,
     /// 控制面连不上的原因（给诊断用，不是给主界面弹窗用的）。
@@ -76,18 +89,24 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// 判定四种组合。
+    /// 判定状态组合。
     ///
     /// ⚠️ 判据只能是**服务管理器**说的「注册了吗」+**控制面**说的「活着吗」，
     /// 不能靠「端口连不上」推断：前台运行（未注册）时端口是通的。
+    ///
+    /// `service` 为 `None` 表示这一轮**根本没读到**服务状态 → [`Phase::ServiceUnknown`]。
+    /// 「安装包不完整」优先于它：sidecar 都不在时，说什么服务状态都没意义。
     pub fn phase_of(
-        service: &ServiceStatus,
+        service: Option<&ServiceStatus>,
         process: Option<&ProcessStatus>,
         sidecar_present: bool,
     ) -> Phase {
         if !sidecar_present {
             return Phase::Incomplete;
         }
+        let Some(service) = service else {
+            return Phase::ServiceUnknown;
+        };
         match (service.installed, process.is_some()) {
             (true, true) => Phase::Running,
             (true, false) => Phase::InstalledStopped,
@@ -104,6 +123,7 @@ impl Snapshot {
             Phase::Foreground => 2,
             Phase::NotInstalled => 3,
             Phase::Incomplete => 4,
+            Phase::ServiceUnknown => 5,
         }
     }
 }
@@ -167,23 +187,36 @@ mod tests {
 
         // ① 已安装 + 可连
         assert_eq!(
-            Snapshot::phase_of(&installed, Some(&process), true),
+            Snapshot::phase_of(Some(&installed), Some(&process), true),
             Phase::Running
         );
         // ② 已安装 + 连不上（用户最容易误判成「坏了」的那种）
         assert_eq!(
-            Snapshot::phase_of(&installed, None, true),
+            Snapshot::phase_of(Some(&installed), None, true),
             Phase::InstalledStopped
         );
         // ③ 未安装 + 可连（终端里跑着）—— 与②看起来一样，但判定必须不同
         assert_eq!(
-            Snapshot::phase_of(&not_installed, Some(&process), true),
+            Snapshot::phase_of(Some(&not_installed), Some(&process), true),
             Phase::Foreground
         );
         // ④ 未安装 + 连不上
         assert_eq!(
-            Snapshot::phase_of(&not_installed, None, true),
+            Snapshot::phase_of(Some(&not_installed), None, true),
             Phase::NotInstalled
+        );
+    }
+
+    #[test]
+    fn an_unreadable_service_status_is_unknown_not_not_installed() {
+        // H-2：读不到服务状态**不能**说成「未安装」（§ 5）。
+        // 中继的返回看不懂（版本不匹配）时，界面写「未安装」会让用户去点【安装服务】，
+        // 而真正该做的是升级桌面端。
+        assert_eq!(Snapshot::phase_of(None, None, true), Phase::ServiceUnknown);
+        // 即使控制面活着（前台某个人在跑），也不能说「未安装」——注册状态就是不知道
+        assert_eq!(
+            Snapshot::phase_of(None, Some(&process()), true),
+            Phase::ServiceUnknown
         );
     }
 
@@ -191,17 +224,19 @@ mod tests {
     fn a_missing_sidecar_beats_everything_else() {
         // 安装包损坏时，界面要说「安装不完整」，而不是「未安装」
         assert_eq!(
-            Snapshot::phase_of(&installed_service(), Some(&process()), false),
+            Snapshot::phase_of(Some(&installed_service()), Some(&process()), false),
             Phase::Incomplete
         );
         assert_eq!(
-            Snapshot::phase_of(&ServiceStatus::not_installed("x"), None, false),
+            Snapshot::phase_of(Some(&ServiceStatus::not_installed("x")), None, false),
             Phase::Incomplete
         );
+        // 读不到服务状态 + 没有 sidecar：还是「安装不完整」（那个更硬，且原因更具体）
+        assert_eq!(Snapshot::phase_of(None, None, false), Phase::Incomplete);
     }
 
     #[test]
-    fn the_four_states_have_distinct_codes() {
+    fn every_state_has_a_distinct_code() {
         // 前端按 code 取文案；重复的 code 会让两种状态显示同一句话
         let phases = [
             Phase::Running,
@@ -209,12 +244,14 @@ mod tests {
             Phase::Foreground,
             Phase::NotInstalled,
             Phase::Incomplete,
+            Phase::ServiceUnknown,
         ];
         let mut codes: Vec<i32> = Vec::new();
         for phase in phases {
             let snapshot = Snapshot {
                 phase,
-                service: ServiceStatus::not_installed("peon-burrow"),
+                service: Some(ServiceStatus::not_installed("peon-burrow")),
+                service_error: None,
                 process: None,
                 control_error: None,
                 discovery: DiscoveryState::Missing,

@@ -37,7 +37,8 @@ export type BusyTarget = ServiceActionName | 'autostart'
 /** 提示条上的按钮：点它做什么。 */
 export interface NoticeAction {
   label: string
-  kind: 'doctor' | 'refresh'
+  /** `doctor` = 打开诊断；`refresh` = 重拉状态；`uninstall` = 撤销安装（H-7）。 */
+  kind: 'doctor' | 'refresh' | 'uninstall'
 }
 
 /** 顶部提示条：黄 = 需要知道（**不是**错误），红 = 出错了。 */
@@ -82,6 +83,8 @@ export function useRelayState() {
   // ---- 快照里的状态（snapshot / heartbeat 两条路都会更新） ----
   const phase = ref<Phase>('notInstalled')
   const service = ref<ServiceStatus | null>(null)
+  /** 读服务状态失败的原始原因（H-2：`null` = 这一次读到了）。 */
+  const serviceError = ref<string | null>(null)
   const processStatus = ref<ProcessStatus | null>(null)
   const controlError = ref<string | null>(null)
   const discovery = ref<DiscoveryState>('missing')
@@ -106,11 +109,15 @@ export function useRelayState() {
   const doctorCopied = ref(false)
 
   /**
-   * 四种组合的判据：**只**看「服务管理器说注册了吗」+「控制面说活着吗」。
+   * 状态组合的判据：**只**看「服务管理器说注册了吗」+「控制面说活着吗」。
    * 与 Rust 侧 `Snapshot::phase_of` 同一套（不能靠「端口连不上」推断：前台运行时端口是通的）。
+   *
+   * H-2：`serviceError` 有值 = 这一轮**没读到**服务状态 → `serviceUnknown`。
+   * 那是「不知道」，不能猜成 `notInstalled`（否则界面会劝用户点【安装服务】）。
    */
   function derivePhase(current: ServiceStatus | null, process: ProcessStatus | null): Phase {
     if (!sidecarPresent.value) return 'incomplete'
+    if (serviceError.value !== null) return 'serviceUnknown'
     if (current?.installed === true) return process ? 'running' : 'installedStopped'
     return process ? 'foreground' : 'notInstalled'
   }
@@ -120,6 +127,7 @@ export function useRelayState() {
   function applySnapshot(next: Snapshot) {
     phase.value = next.phase
     service.value = next.service
+    serviceError.value = next.serviceError
     processStatus.value = next.process
     controlError.value = next.controlError
     discovery.value = next.discovery
@@ -141,7 +149,9 @@ export function useRelayState() {
   }
 
   function applyService(next: ServiceStatus) {
+    // 这一轮读到了 → 把上一次的失败原因清掉（H-2：读得到就不再是「读不到」）
     service.value = next
+    serviceError.value = null
     phase.value = derivePhase(next, processStatus.value)
   }
 
@@ -182,9 +192,14 @@ export function useRelayState() {
 
   /**
    * 状态本身带来的提示（不是某次操作的结果）。
-   * § 5：服务管理器说「在跑」但控制面连不上 —— 多半正在重启 / 更新，说清楚别让用户以为坏了。
+   *
+   * - H-2：读不到服务状态 —— 原始原因在卡片副标题上，这里只给一个进诊断的入口；
+   * - § 5：服务管理器说「在跑」但控制面连不上 —— 多半正在重启 / 更新，说清楚别让用户以为坏了。
    */
   const statusNotice = computed<Notice | null>(() => {
+    if (serviceError.value !== null) {
+      return { tone: 'warn', text: noticeText.serviceUnknown, action: doctorAction() }
+    }
     if (service.value?.running !== true || processStatus.value !== null) return null
     return {
       tone: 'warn',
@@ -199,7 +214,10 @@ export function useRelayState() {
     const action = notice.value?.action
     notice.value = null
     if (action?.kind === 'doctor') openDoctor()
-    else void refresh()
+    else if (action?.kind === 'uninstall') {
+      // H-7：撤销安装走的就是普通卸载（提权按当前安装级别），结果照常显示在提示条上
+      void runGuarded('uninstall', () => ipc.serviceAction('uninstall'))
+    } else void refresh()
   }
 
   // ---- 拉状态 / 轮询（只在窗口可见时跑） ----
@@ -293,8 +311,13 @@ export function useRelayState() {
 
   function applyResult(result: ActionResult) {
     if (result.cancelled) {
-      // 取消提权不是错误：黄条，状态不变，不产生「错误」记录（验收 #4）
-      notice.value = { tone: 'warn', text: noticeText.cancelledElevation }
+      // 取消提权不是错误：黄条，状态不变，不产生「错误」记录（验收 #4）。
+      // 文案用中继给的那句：它知道是哪一级、哪个动作（弹 UAC 的不只是「安装系统服务」，
+      // 系统服务的【停止】在控制面连不上时降级也要一次授权 —— H-3）。
+      notice.value = {
+        tone: 'warn',
+        text: result.message || noticeText.cancelledElevation,
+      }
       return
     }
     if (!result.ok) {
@@ -303,6 +326,25 @@ export function useRelayState() {
     }
     // 成功不弹对话框：卡片刷新本身就是反馈（§ 3.1）
     notice.value = null
+  }
+
+  /**
+   * H-7：安装失败后的那条提示 —— 注册项可能已经留下了。
+   *
+   * 「已注册但没在跑」是最典型的半装状态（注册成功、启动或就绪自检失败）。
+   * 这里**不自动反注册**：一次慢启动不该变成「装的东西没了」。给出事实 +
+   * 【撤销安装】一个按钮，修还是撤由用户决定（`ai-docs/01-ui-and-states.md § 3.1`）。
+   *
+   * ⚠️ 必须在 `refresh()` **之后**调：判据是刷新后的状态，不是失败时的那句错误。
+   */
+  function offerInstallRollback(reason: string) {
+    // 判据必须是**刚刚读到的**状态：读不到服务状态时不要凭旧状态劝用户撤销
+    if (phase.value !== 'installedStopped' || serviceError.value !== null) return
+    notice.value = {
+      tone: 'error',
+      text: noticeText.installLeftover(reason),
+      action: { label: noticeText.undoInstall, kind: 'uninstall' },
+    }
   }
 
   /**
@@ -330,15 +372,22 @@ export function useRelayState() {
       }
     }, ACTION_TIMEOUT_MS)
 
+    // 失败了就记下那句人话：H-7 要拿它拼「注册项还在」的提示（提权取消不算失败）
+    let failure: string | null = null
     try {
-      applyResult(await work())
+      const result = await work()
+      if (!result.ok && !result.cancelled) failure = result.message
+      applyResult(result)
     } catch (error) {
-      notice.value = noticeFromError(ipc.asCommandError(error))
+      const commandError = ipc.asCommandError(error)
+      failure = messageFor(commandError)
+      notice.value = noticeFromError(commandError)
     } finally {
       clearTimeout(watchdog)
       pendingMode.value = null
       await refresh()
       busy.value = null
+      if (failure !== null && target === 'install') offerInstallRollback(failure)
     }
   }
 
@@ -360,8 +409,19 @@ export function useRelayState() {
 
   // ---- 可用性矩阵（§ 3「何时可用」） ----
 
-  /** 安装包不完整：所有操作都禁用（§ 5）。 */
-  const allBlocked = computed(() => phase.value === 'incomplete')
+  /**
+   * 所有操作都禁用的两种状态：
+   * - `incomplete`：安装包不完整（§ 5）；
+   * - `serviceUnknown`：读不到服务状态（H-2）—— 不知道装没装，就不该让用户点【安装服务】。
+   */
+  const allBlocked = computed(
+    () => phase.value === 'incomplete' || phase.value === 'serviceUnknown',
+  )
+
+  /** 全禁用时的统一原因（两种情况的原因不同，别把「读不到状态」说成「缺中继程序」）。 */
+  const blockedReason = computed(() =>
+    phase.value === 'serviceUnknown' ? misc.serviceUnknownDisabled : noticeText.sidecarMissing,
+  )
 
   const availability = computed<Record<ServiceActionName, boolean>>(() => {
     const installed = service.value?.installed === true
@@ -384,7 +444,7 @@ export function useRelayState() {
   function actionReason(name: ServiceActionName): string {
     if (busy.value !== null) return misc.busy
     if (loading.value) return misc.loading
-    if (allBlocked.value) return noticeText.sidecarMissing
+    if (allBlocked.value) return blockedReason.value
     return disabledReasonByPhase[phase.value][name] ?? disabledReason[name] ?? misc.actionNotAvailable
   }
 
@@ -427,7 +487,7 @@ export function useRelayState() {
   const autostartReason = computed(() => {
     if (busy.value !== null) return misc.busy
     if (loading.value) return misc.loading
-    if (allBlocked.value) return noticeText.sidecarMissing
+    if (allBlocked.value) return blockedReason.value
     return misc.autostartDisabled
   })
 
@@ -525,6 +585,7 @@ export function useRelayState() {
       phaseText[phase.value].subtitle({
         process: processStatus.value,
         service: service.value ?? {},
+        serviceError: serviceError.value,
       }),
     ),
     phaseTone: computed(() => phaseText[phase.value].tone),
