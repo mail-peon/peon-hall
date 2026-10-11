@@ -28,13 +28,16 @@ tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 # 控制面协议的**唯一实现**（见 ai-docs/02-core-integration.md § 1）。
 #
-# ⚠️ 现在是 **path 依赖**：开发/调试阶段直接用本地姊妹仓库，改 core 立刻生效。
-# 发版前必须换成钉死的 git tag 依赖或 crates.io 版本依赖，且**只用一个 PR 改**：
-#   1. 钉 tag：peon-burrow-ipc = { git = "https://github.com/mail-peon/peon-burrow", tag = "v0.1.0", package = "peon-burrow-ipc" }
-#   2. 发版后：peon-burrow-ipc = "0.1"
-# 提交 path 依赖会让 CI 与别人的 checkout 都找不到路径。
-peon-burrow-ipc = { path = "../../peon-burrow/crates/peon-burrow-ipc" }
-peon-burrow-ipc-types = { path = "../../peon-burrow/crates/peon-burrow-ipc-types" }
+# ⚠️ 这里必须是**发布版本**（crates.io），**不能是 path 依赖**：
+#    CI 只 checkout 本仓库，`../../peon-burrow/...` 在 runner 上不存在 ——
+#    提交 path 依赖会让 rust job 与 4 个 bundle job 在解析依赖时就红
+#    （本地看不出来，因为兄弟仓库就在旁边）。
+#    `ci.yaml` 的 `no path dependencies` 那一步在挡它。
+#
+# 本地想「改 core 立刻生效」：临时把下面两行改成 path（改完**别提交**），
+# 或者用 `git update-index --skip-worktree` 之外的办法 —— 但别提交 path。
+peon-burrow-ipc = "0.1"
+peon-burrow-ipc-types = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -19,6 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # ⚠️ CI 只 checkout 本仓库：指向兄弟仓库的 path 依赖（`../../peon-burrow/...`）在 runner 上
+      #    不存在，会让这个 job（以及 4 个 bundle job）在解析依赖时就红。
+      #    本地看不出来 —— 兄弟仓库就在旁边。
+      - name: no sibling path dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE 'path[[:space:]]*=[[:space:]]*"\.\./\.\.' src-tauri/Cargo.toml; then
+            echo "::error::src-tauri/Cargo.toml points at a sibling checkout; depend on the published crate instead"
+            exit 1
+          fi
+          echo "no sibling path dependencies"
+
       # 版本由 package.json 的 packageManager 决定（别在这里写死，两处会漂）
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -93,6 +107,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      # 同 frontend job 的那条：CI 上没有兄弟仓库，path 依赖会让 clippy/test 直接红
+      - name: no sibling path dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE 'path[[:space:]]*=[[:space:]]*"\.\./\.\.' src-tauri/Cargo.toml; then
+            echo "::error::src-tauri/Cargo.toml points at a sibling checkout; depend on the published crate instead"
+            exit 1
+          fi
+          echo "no sibling path dependencies"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
