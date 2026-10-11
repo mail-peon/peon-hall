@@ -290,6 +290,9 @@ fn shell_quote(value: &str) -> String {
 mod tests {
     use super::*;
 
+    // 只有下面那 4 个 `#[cfg(windows)]` 测试用它 —— 不加这道门，Linux/macOS 上它就成了
+    // 未使用的函数，`-D warnings` 下直接编译失败（CI 实测：`function files is never used`）。
+    #[cfg(windows)]
     fn files() -> ElevationFiles {
         ElevationFiles {
             stdout: PathBuf::from(r"C:\Temp\elevate.out"),
