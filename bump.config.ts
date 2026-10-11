@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { defineConfig } from 'bumpp'
 
 // 发版入口：`pnpm release`（就是 `bumpp`，默认交互式问你升哪个版本）。
@@ -13,6 +14,19 @@ import { defineConfig } from 'bumpp'
 // 提交信息默认就是 Conventional Commits 的 `chore: release v{version}`，显式写出来只是为了防止上游改默认值。
 export default defineConfig({
   files: ['package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml'],
+  // ⚠️ `src-tauri/Cargo.lock` **不能**加进 `files`：bumpp 对非 JSON 文件做的是**全局文本替换**，
+  //    而这份 lock 里还有别的包写着自己的版本号（`byteorder-lite` / `vswhom` / 两个
+  //    `peon-burrow-ipc*` 都写着 0.1.0）—— 替换等于伪造依赖版本。
+  //    正解是让 **cargo 自己**追平（它只动 `peon-hall` 自己那一行），顺便让版本改动和 lock
+  //    落在同一个提交里。用函数形式而不是字符串：Windows 上没有 `/dev/null`，
+  //    shell 重定向反而会炸；`execFileSync` + `stdio: 'ignore'` 两个平台都干净。
+  execute: () => {
+    execFileSync(
+      'cargo',
+      ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--format-version', '1'],
+      { stdio: 'ignore' },
+    )
+  },
   // ⚠️ 反向命名、而且**默认是跳过检查**的（`noGitCheck` 默认 `true`）——所以显式设 false 才算打开。
   //    打开之后：工作区不干净就不发版。不然那笔无关改动可能被 bumpp 一起提交。
   noGitCheck: false,
