@@ -25,7 +25,11 @@ const emit = defineEmits<{ copy: [] }>()
 
     <ATag :bordered="false">{{ infoText.urlSource[props.source] }}</ATag>
 
-    <ATooltip :title="props.url === '' ? misc.noAddress : ''">
+    <ATooltip
+      :title="props.url === ''
+        ? misc.noAddress
+        : '扩展会自动从剪贴板读这个地址 —— 打开「账号」页点【+ 新增】时会提示填入'"
+    >
       <span>
         <AButton
           size="small"
