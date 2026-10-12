@@ -4,7 +4,7 @@
 
 import { Button as AButton, Space as ASpace, Tooltip as ATooltip } from 'ant-design-vue'
 
-import type { ActionItem } from '../composables/useRelayState'
+import type { ActionItem } from '../types'
 
 const props = defineProps<{ items: ActionItem[] }>()
 

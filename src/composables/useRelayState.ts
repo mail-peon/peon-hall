@@ -16,12 +16,24 @@ import {
   notice as noticeText,
   phaseText,
 } from '../locales/zh-CN'
+import {
+  availabilityFor,
+  doctorAsText as doctorAsTextPure,
+  messageFor as messageForPure,
+  noticeFromError as noticeFromErrorPure,
+  phaseOf,
+  variantOf as variantOfPure,
+} from './relay-pure'
 import type {
+  ActionItem,
   ActionResult,
+  BusyTarget,
   CommandError,
   DiscoveryState,
   DoctorReport,
   Heartbeat,
+  Notice,
+  NoticeAction,
   Phase,
   ProcessStatus,
   ServiceActionName,
@@ -30,34 +42,6 @@ import type {
   Snapshot,
   UrlSource,
 } from '../types'
-
-/** 「进行中」的目标：五个操作之一，或开机自启开关。 */
-export type BusyTarget = ServiceActionName | 'autostart'
-
-/** 提示条上的按钮：点它做什么。 */
-export interface NoticeAction {
-  label: string
-  /** `doctor` = 打开诊断；`refresh` = 重拉状态；`uninstall` = 撤销安装（H-7）。 */
-  kind: 'doctor' | 'refresh' | 'uninstall'
-}
-
-/** 顶部提示条：黄 = 需要知道（**不是**错误），红 = 出错了。 */
-export interface Notice {
-  tone: 'warn' | 'error'
-  text: string
-  action?: NoticeAction
-}
-
-/** 操作栏的一项：可用性矩阵算出来的结果。 */
-export interface ActionItem {
-  name: ServiceActionName
-  label: string
-  variant: 'primary' | 'danger' | 'secondary'
-  disabled: boolean
-  /** 禁用原因（禁用时显示成 title —— § 7：不能只灰掉不说为什么）。 */
-  reason: string
-  busy: boolean
-}
 
 const POLL_MS = 2000
 /** ping 连续失败 3 次后退避到 10 秒：控制面断开时别刷屏（§ 4）。 */
@@ -118,10 +102,7 @@ export function useRelayState() {
    * 那是「不知道」，不能猜成 `notInstalled`（否则界面会劝用户点【安装服务】）。
    */
   function derivePhase(current: ServiceStatus | null, process: ProcessStatus | null): Phase {
-    if (!sidecarPresent.value) return 'incomplete'
-    if (serviceError.value !== null) return 'serviceUnknown'
-    if (current?.installed === true) return process ? 'running' : 'installedStopped'
-    return process ? 'foreground' : 'notInstalled'
+    return phaseOf(sidecarPresent.value, serviceError.value, current, process)
   }
 
   // ---- 应用状态 ----
@@ -169,17 +150,7 @@ export function useRelayState() {
   // ---- 提示条 ----
 
   function messageFor(error: CommandError): string {
-    // 错误码 → 人话，别把原生错误码丢给用户（§ 3.1 / § 7）
-    switch (error.code) {
-      case 'sidecarMissing':
-        return noticeText.sidecarMissing
-      case 'versionMismatch':
-        return noticeText.versionMismatch
-      case 'controlUnreachable':
-        return noticeText.controlUnreachable(error.message)
-      default:
-        return error.message
-    }
+    return messageForPure(error, noticeText)
   }
 
   function doctorAction(): NoticeAction {
@@ -187,11 +158,7 @@ export function useRelayState() {
   }
 
   function noticeFromError(error: CommandError): Notice {
-    // 提权被取消**不是错误**：黄条，不写红字（验收 #4）
-    if (error.code === 'elevationCancelled') {
-      return { tone: 'warn', text: noticeText.cancelledElevation }
-    }
-    return { tone: 'error', text: messageFor(error), action: doctorAction() }
+    return noticeFromErrorPure(error, noticeText)
   }
 
   /**
@@ -428,15 +395,8 @@ export function useRelayState() {
   )
 
   const availability = computed<Record<ServiceActionName, boolean>>(() => {
-    const installed = service.value?.installed === true
     const running = processStatus.value !== null
-    return {
-      install: !installed,
-      uninstall: installed,
-      start: installed && !running,
-      stop: running,
-      restart: running,
-    }
+    return availabilityFor(service.value?.installed === true, running)
   })
 
   function canRun(name: ServiceActionName): boolean {
@@ -454,9 +414,7 @@ export function useRelayState() {
 
   /** 主按钮用主色；卸载是破坏性的，永远用红色提醒。 */
   function variantOf(name: ServiceActionName, primary: ServiceActionName | null): ActionItem['variant'] {
-    if (name === primary) return 'primary'
-    if (name === 'uninstall') return 'danger'
-    return 'secondary'
+    return variantOfPure(name, primary)
   }
 
   const actions = computed<ActionItem[]>(() => {
@@ -531,14 +489,7 @@ export function useRelayState() {
 
   /** 诊断结果转纯文本（贴 issue 用）。 */
   function doctorAsText(report: DoctorReport): string {
-    return report.checks
-      .map((check) => {
-        const head = `${doctorText.mark[check.level]} ${check.title}${
-          check.detail === '' ? '' : `\t${check.detail}`
-        }`
-        return check.action ? `${head}\n\t${doctorText.suggestion}${check.action}` : head
-      })
-      .join('\n')
+    return doctorAsTextPure(report, doctorText)
   }
 
   // ---- 复制 / 打开目录 ----

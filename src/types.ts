@@ -133,6 +133,34 @@ export interface DoctorReport {
 /** 五个操作。 */
 export type ServiceActionName = 'install' | 'uninstall' | 'start' | 'stop' | 'restart'
 
+/** 提示条上的按钮：点它做什么。 */
+export interface NoticeAction {
+  label: string
+  /** `doctor` = 打开诊断；`refresh` = 重拉状态；`uninstall` = 撤销安装（H-7）。 */
+  kind: 'doctor' | 'refresh' | 'uninstall'
+}
+
+/** 顶部提示条：黄 = 需要知道（**不是**错误），红 = 出错了。 */
+export interface Notice {
+  tone: 'warn' | 'error'
+  text: string
+  action?: NoticeAction
+}
+
+/** 「进行中」的目标：五个操作之一，或开机自启开关。 */
+export type BusyTarget = ServiceActionName | 'autostart'
+
+/** 操作栏的一项：可用性矩阵算出来的结果。 */
+export interface ActionItem {
+  name: ServiceActionName
+  label: string
+  variant: 'primary' | 'danger' | 'secondary'
+  disabled: boolean
+  /** 禁用原因（禁用时显示成 title —— § 7：不能只灰掉不说为什么）。 */
+  reason: string
+  busy: boolean
+}
+
 /** 命令抽屉里一行内容的来源。 */
 export type CommandEventKind = 'command' | 'stdout' | 'stderr' | 'exit'
 
