@@ -83,10 +83,14 @@ node scripts/check-types.mjs
 
 ### 本地联调（两个仓库并排）
 
-⚠️ **`src-tauri/Cargo.toml` 里的 `peon-burrow-ipc` 现在是 `path` 依赖**，
-指向 `../../peon-burrow/crates/peon-burrow-ipc` —— 这样改 core 立刻在桌面端生效，
-调试最省事。**发版前必须换成钉死的 git tag 依赖（或 crates.io 版本依赖）**，
-否则 CI 与别人的 checkout 都找不到那个路径（`ai-docs/02-core-integration.md § 1`）。
+⚠️ **`src-tauri/Cargo.toml` 里 `peon-burrow-ipc` / `peon-burrow-ipc-types` 已经是版本依赖**（`0.1`，来自 crates.io），**不是** path 依赖。
+
+CI 只 checkout 本仓库：`path = "../../peon-burrow/..."` 在 runner 上找不到那个路径，会让这
+个 job 与 4 个 bundle job 在解析依赖时就红（本地看不出来 —— 兄弟仓库就在旁边）。
+
+想「改 core 立刻在桌面端生效」时，**临时**改 path 改完别提交（详见
+`ai-docs/02-core-integration.md § 1`），或者用 `git update-index --skip-worktree` 把那
+行保住再恢复。
 
 ```bash
 # 1) 编译 core 并把它的二进制放到 Tauri 要的位置（命名契约见 ai-docs/03-build-and-sidecar.md § 2）
