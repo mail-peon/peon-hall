@@ -18,8 +18,9 @@ source_bin="$core_repo/target/$configuration/burrow"
 # ⓪ 新鲜度闸：源码比二进制新 = 忘了重新构建（`cargo test` 不会重建 bin）
 newest_source=$(find "$core_repo/crates" "$core_repo/Cargo.toml" -name '*.rs' -o -name 'Cargo.toml' 2>/dev/null \
     | xargs ls -t 2>/dev/null | head -1)
-if [ -n "$newest_source" ] && [ "$newest_source" -nt "$source" ]; then
-    echo "错误：$source 比 $newest_source 旧 —— 先 cargo build -p peon-burrow" >&2
+# ⚠ `$source_bin`（不是 `$source`，那是另一个变量）—— 写错就成了无条件失败。
+if [ -n "$newest_source" ] && [ "$newest_source" -nt "$source_bin" ]; then
+    echo "错误：$source_bin 比 $newest_source 旧 —— 先 cargo build -p peon-burrow" >&2
     exit 1
 fi
 
