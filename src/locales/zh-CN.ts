@@ -270,4 +270,6 @@ export const drawer = {
   empty: '还没有跑过命令 —— 装服务、启停、开关自启时，这里会显示跑了什么、返回了什么',
   /** footer 上的行数徽标。 */
   lines: (count: number) => `${count} 行`,
+  /** 搜索框的占位文字。 */
+  searchPlaceholder: '搜索（Enter 下一个，Shift+Enter 上一个，Esc 关闭）',
 }

@@ -12,9 +12,10 @@
 // `@xterm/xterm` 渲染（等宽 + ANSI 颜色），`@xterm/addon-fit` 跟随容器尺寸。
 
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { Button as AButton, Space as ASpace } from 'ant-design-vue'
+import { Button as AButton, Input as AInput, Space as ASpace } from 'ant-design-vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { onCommandEvent, copyText } from '../ipc'
@@ -27,7 +28,14 @@ const emit = defineEmits<{ (event: 'toggle', open: boolean): void }>()
 const host = ref<HTMLDivElement | null>(null)
 const terminal = ref<Terminal | null>(null)
 const fitAddon = new FitAddon()
+let searchAddon: SearchAddon | null = null
 const lineCount = ref(0)
+/** 搜索框可见性（Ctrl/Cmd+F 触发）。 */
+const searchVisible = ref(false)
+/** 搜索关键词。 */
+const searchQuery = ref('')
+/** 「找不到」的高亮 —— 用 antd 输入框的 status 控制。 */
+const searchNotFound = ref(false)
 
 /** 复制按钮的瞬时状态（成功/失败都要让用户看见，H-6）。 */
 const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
@@ -151,6 +159,8 @@ onMounted(async () => {
     },
   })
   term.loadAddon(fitAddon)
+  searchAddon = new SearchAddon()
+  term.loadAddon(searchAddon)
   term.open(host.value!)
   terminal.value = term
   await fit()
@@ -158,15 +168,64 @@ onMounted(async () => {
   // 命令事件由 Rust 侧发（每次中继调用都会发一串）
   stopListening = await onCommandEvent(write)
 
+  // Ctrl/Cmd+F 唤起搜索框（xterm 自带的快捷键会先抢；但它现在没注册——手动接管）
+  term.attachCustomKeyEventHandler((event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'f' && event.type === 'keydown') {
+      event.preventDefault()
+      searchVisible.value = true
+      return false
+    }
+    return true
+  })
+
   window.addEventListener('resize', fit)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', fit)
   stopListening?.()
+  searchAddon?.dispose()
+  searchAddon = null
   terminal.value?.dispose()
   timers.forEach((timer) => window.clearTimeout(timer))
 })
+
+/** 输入框变化时实时搜索；找不到就高亮 'status="error"'。 */
+function onSearchInput(event: Event): void {
+  const target = event.target as HTMLInputElement | null
+  const value = target?.value ?? ''
+  searchQuery.value = value
+  if (!searchAddon || !value) {
+    searchNotFound.value = false
+    searchAddon?.clearDecorations()
+    return
+  }
+  const found = searchAddon.findNext(value)
+  searchNotFound.value = !found
+}
+
+/** Enter 跳下一个；Shift+Enter 跳上一个。 */
+function onSearchKey(event: KeyboardEvent): void {
+  if (!searchAddon || !searchQuery.value) return
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    const found = event.shiftKey
+      ? searchAddon.findPrevious(searchQuery.value)
+      : searchAddon.findNext(searchQuery.value)
+    searchNotFound.value = !found
+  }
+  else if (event.key === 'Escape') {
+    searchVisible.value = false
+  }
+}
+
+/** 关闭搜索框时清掉高亮。 */
+function closeSearch(): void {
+  searchVisible.value = false
+  searchQuery.value = ''
+  searchNotFound.value = false
+  searchAddon?.clearDecorations()
+}
 
 watch(
   () => props.open,
@@ -194,6 +253,26 @@ watch(
           </AButton>
         </ASpace>
       </header>
+
+      <!--
+        搜索框：Ctrl/Cmd+F 唤起，Enter 跳下一个，Shift+Enter 跳上一个，Esc 关闭。
+        为什么不用 xterm 自带的快捷键：它占的是「终端内部」语义（find within buffer），
+        但这里要让用户能看见在搜什么 —— 输入框可见才是关键。
+      -->
+      <div v-if="searchVisible" class="drawer-search">
+        <AInput
+          v-model:value="searchQuery"
+          size="small"
+          :placeholder="drawer.searchPlaceholder"
+          :status="searchNotFound ? 'error' : ''"
+          autofocus
+          allow-clear
+          @input="onSearchInput"
+          @keydown="onSearchKey"
+          @keydown.escape="closeSearch"
+        />
+        <AButton size="small" type="text" @click="closeSearch">{{ drawer.close }}</AButton>
+      </div>
 
       <div ref="host" class="drawer-term" />
     </section>
@@ -320,6 +399,19 @@ watch(
   margin-left: auto;
   color: #4b5563;
   font-size: 11px;
+}
+
+.drawer-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.drawer-search :deep(.ant-input-affix-wrapper) {
+  background: rgb(17 24 39 / 55%);
+  border-color: rgb(255 255 255 / 8%);
 }
 </style>
 
