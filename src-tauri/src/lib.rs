@@ -15,6 +15,7 @@
 pub mod commands;
 pub mod control;
 pub mod discovery;
+pub mod doctor;
 pub mod elevate;
 pub mod sidecar;
 pub mod snapshot;
@@ -33,6 +34,7 @@ pub fn run() {
             commands::service_action,
             commands::set_autostart,
             commands::control_command,
+            commands::check_extension_reachable,
             commands::app_info,
             commands::open_config,
             commands::open_logs,

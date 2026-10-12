@@ -547,6 +547,20 @@ pub async fn control_command(
         .map_err(|error| CommandError::new(ErrorCode::ControlUnreachable, error.message()))
 }
 
+/// 扩展连通性诊断：模拟扩展侧的行为，从桌面端进程对中继地址做一次 TCP 探测。
+///
+/// 与 burrow 侧 `doctor` 的区别：burrow 查的是**中继自己**的健康（配置 / 端口 / 日志）；
+/// 这一查的是「扩展 webview 跑这个 `relayUrl` 能不能连上」—— 二者都失败时用户的诊断路径不一样。
+///
+/// ⚠️ 不要在这里读 token / 不要做 WebSocket 握手：那是 burrow 的活，重复做只会让
+/// 诊断变慢 + 把「端口可达 / 端口不通」的信息密度冲淡。
+#[tauri::command]
+pub async fn check_extension_reachable(
+    relay_url: String,
+) -> peon_burrow_ipc_types::CheckResult {
+    crate::doctor::check(&relay_url).await
+}
+
 /// 把命令名映射成白名单里的 `Request`。
 pub fn build_request(command: &str, payload: Option<&Value>) -> Option<Request> {
     let verbose = payload

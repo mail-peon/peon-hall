@@ -8,8 +8,9 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 
 import type {
   ActionResult,
-  CommandEvent,
   AppInfo,
+  CheckResult,
+  CommandEvent,
   CommandError,
   DoctorReport,
   Heartbeat,
@@ -78,6 +79,18 @@ export function controlCommand<T = unknown>(
 /** 诊断（走控制面的 `doctor`）。 */
 export function doctor(verbose = true): Promise<DoctorReport> {
   return controlCommand<DoctorReport>('doctor', { verbose })
+}
+
+/**
+ * 扩展连通性诊断：模拟扩展侧的 TCP 探测，从桌面端进程对中继地址做一次握手。
+ *
+ * 与 `doctor()` 的差异（来自 `src-tauri/src/doctor.rs` 的注释）：
+ * - `doctor()` 查的是**中继自己的健康**（配置 / 端口 / 日志），走 burrow 控制面；
+ * - 这一查的是「扩展 webview 跑这个 `relayUrl` 能不能连上」—— 二者都失败时
+ *   用户的诊断路径不一样，所以是分开的两项。
+ */
+export function checkExtensionReachable(relayUrl: string): Promise<CheckResult> {
+  return invoke<CheckResult>('check_extension_reachable', { relayUrl })
 }
 
 /** 应用信息（版本、绑定的 core 版本）。 */

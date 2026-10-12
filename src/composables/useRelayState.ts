@@ -468,7 +468,17 @@ export function useRelayState() {
     doctorLoading.value = true
     doctorError.value = null
     try {
-      doctorReport.value = await ipc.doctor()
+      // 两路并发：burrow 自己的 doctor + peon-hall 的扩展连通性检查
+      const [coreReport, reachable] = await Promise.all([
+        ipc.doctor(),
+        ipc.checkExtensionReachable(relayUrl.value),
+      ])
+      doctorReport.value = {
+        checks: [
+          ...coreReport.checks,
+          reachable,
+        ],
+      }
     } catch (error) {
       doctorReport.value = null
       doctorError.value = messageFor(ipc.asCommandError(error))
