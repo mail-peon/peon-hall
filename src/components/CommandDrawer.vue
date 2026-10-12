@@ -39,21 +39,42 @@ function write(event: CommandEvent) {
   const term = terminal.value
   if (!term) return
 
+  /*
+   * 时间戳：每行命令前面都带 `[HH:MM:SS]`（灰色）。
+   *
+   * 为什么用前端时间而不是 Rust 发的：
+   * - Rust 那边只发「事件 id + 行内容」，多一个字段要改协议类型 + 三个 crate；
+   * - 命令事件的发送节奏（用户点按钮 → Rust spawn → stdout 流）已经决定了
+   *   一切以「用户视角**为主」的连续性 —— 一条命令下的所有行天然是同一秒级连续，
+   *   用户能看到「这一坨是几点几分开始的」就够定位问题了。
+   *
+   * 这条黑框存在时：滚动 x5000 行找 5 分钟前那次失败的安装，就能用 `find` 跳。
+   */
+  const stamp = `\x1b[90m[${formatTimestamp(new Date())}]\x1b[0m `
   switch (event.kind) {
     case 'command':
-      term.write(`\r\n\x1b[36m$ ${event.line}\x1b[0m\r\n`)
+      term.write(`\r\n${stamp}\x1b[36m$ ${event.line}\x1b[0m\r\n`)
       break
     case 'stderr':
-      term.write(`\x1b[31m${event.line}\x1b[0m\r\n`)
+      term.write(`${stamp}\x1b[31m${event.line}\x1b[0m\r\n`)
       break
     case 'exit':
-      term.write(`\x1b[90m—— 退出码 ${event.line} ——\x1b[0m\r\n`)
+      term.write(`${stamp}\x1b[90m—— 退出码 ${event.line} ——\x1b[0m\r\n`)
       break
     default:
-      term.write(`${event.line}\r\n`)
+      term.write(`${stamp}${event.line}\r\n`)
   }
 
   lineCount.value += 1
+}
+
+/**
+ * `[HH:MM:SS]` —— 终端里的「等宽指令」必须够用，且本机时区（与服务时间可能不同，
+ * 但中继进程也不起服务进程关系）。
+ */
+function formatTimestamp(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 async function fit() {
