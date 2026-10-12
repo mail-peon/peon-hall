@@ -48,6 +48,18 @@ function write(event: CommandEvent) {
   if (!term) return
 
   /*
+   * 过滤 `auto` 起源的事件（10 秒一次的 `burrow service status --json` 轮询）：
+   *   它**不是**用户操作，调试时也没人会翻 5000 行 service status 输出找问题。
+   *   想看「中继现在在不在」直接看卡片上的状态徽标就够了 —— 命令抽屉是给人
+   *   看「我刚刚按的那个按钮为什么没反应」的，auto 那两个不该来占位。
+   *
+   * 注释里的 4 行代价 = 挡掉用户每次打开抽屉都会看到「这 50 条 `burrow service status`
+   * 都是哪冒出来的？」的困惑。
+   */
+  if (event.origin === 'auto')
+    return
+
+  /*
    * 时间戳：每行命令前面都带 `[HH:MM:SS]`（灰色）。
    *
    * 为什么用前端时间而不是 Rust 发的：
