@@ -38,8 +38,8 @@ tracing-subscriber = { version = "0.3", features = ["fmt"] }
 #
 # 本地想「改 core 立刻生效」：临时把下面两行改成 path（改完**别提交**），
 # 或者用 `git update-index --skip-worktree` 之外的办法 —— 但别提交 path。
-peon-burrow-ipc = "0.1"
-peon-burrow-ipc-types = "0.1"
+peon-burrow-ipc = "0.1.1"
+peon-burrow-ipc-types = "0.1.1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -14,6 +14,6 @@
 
 [core]
 # 绑定的 peon-burrow release tag：sidecar 的版本就是它
-version = "v0.1.0"
+version = "v0.1.1"
 # 从哪里取；fork / 内网镜像改这一行（脚本仍可用 `CORE_REPO` 环境变量临时覆盖）
 repo = "mail-peon/peon-burrow"
