@@ -1,6 +1,6 @@
 [package]
 name = "peon-hall"
-version = "0.1.7"
+version = "0.1.8"
 description = "peon-burrow 中继的桌面安装器与状态面板"
 edition = "2021"
 rust-version = "1.88"
