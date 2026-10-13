@@ -53,7 +53,7 @@ fn connect(target: &SocketTarget, timeout: Duration) -> Result<String, String> {
     // `connect_timeout` 在 Windows 上**不**支持非 0 的超时（会返回 error），所以兜底
     // 用 `connect` + 手动 `set_read_timeout` 来限制探测时长。
     let stream = TcpStream::connect_timeout(&address, timeout)
-        .or_else(|_| TcpStream::connect(&address))
+        .or_else(|_| TcpStream::connect(address))
         .map_err(|error| describe_error(&address, &error))?;
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
@@ -91,9 +91,7 @@ fn parse_target(relay_url: &str) -> Result<SocketTarget, String> {
     }
 
     // 砍掉 path / query：取到第一个 `/` 或 `?` 之前的就是 authority
-    let authority_end = after_scheme
-        .find(|c: char| c == '/' || c == '?')
-        .unwrap_or(after_scheme.len());
+    let authority_end = after_scheme.find(['/', '?']).unwrap_or(after_scheme.len());
     let authority = &after_scheme[..authority_end];
 
     // IPv6 字面量：`[::1]:993`；其它：取第一个 `:` 之前为 host
@@ -111,13 +109,13 @@ fn parse_target(relay_url: &str) -> Result<SocketTarget, String> {
     } else {
         match authority.split_once(':') {
             Some((host, port)) => {
-                let port = port.parse::<u16>().ok().unwrap_or(if scheme == "wss" { 443 } else { 80 });
+                let port =
+                    port.parse::<u16>()
+                        .ok()
+                        .unwrap_or(if scheme == "wss" { 443 } else { 80 });
                 (host.to_owned(), port)
             }
-            None => (
-                authority.to_owned(),
-                if scheme == "wss" { 443 } else { 80 },
-            ),
+            None => (authority.to_owned(), if scheme == "wss" { 443 } else { 80 }),
         }
     };
 

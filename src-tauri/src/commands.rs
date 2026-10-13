@@ -555,9 +555,7 @@ pub async fn control_command(
 /// ⚠️ 不要在这里读 token / 不要做 WebSocket 握手：那是 burrow 的活，重复做只会让
 /// 诊断变慢 + 把「端口可达 / 端口不通」的信息密度冲淡。
 #[tauri::command]
-pub async fn check_extension_reachable(
-    relay_url: String,
-) -> peon_burrow_ipc_types::CheckResult {
+pub async fn check_extension_reachable(relay_url: String) -> peon_burrow_ipc_types::CheckResult {
     crate::doctor::check(&relay_url).await
 }
 
