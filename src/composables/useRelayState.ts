@@ -182,7 +182,7 @@ export function useRelayState() {
   const visibleNotice = computed<Notice | null>(() => notice.value ?? statusNotice.value)
 
   function runNoticeAction() {
-    const action = notice.value?.action
+    const action = visibleNotice.value?.action
     notice.value = null
     if (action?.kind === 'doctor') openDoctor()
     else if (action?.kind === 'uninstall') {
