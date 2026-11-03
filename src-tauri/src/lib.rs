@@ -28,16 +28,16 @@ pub fn run() {
         // 只有剪贴板：界面要「复制扩展地址」（capabilities 里也只为它开了权限）
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
-            commands::snapshot,
-            commands::heartbeat,
-            commands::service_status,
-            commands::service_action,
-            commands::set_autostart,
-            commands::control_command,
-            commands::check_extension_reachable,
-            commands::app_info,
-            commands::open_config,
-            commands::open_logs,
+            commands::status::snapshot,
+            commands::status::heartbeat,
+            commands::service::service_status,
+            commands::service::service_action,
+            commands::service::set_autostart,
+            commands::control::control_command,
+            commands::control::check_extension_reachable,
+            commands::desktop::app_info,
+            commands::desktop::open_config,
+            commands::desktop::open_logs,
         ])
         .run(tauri::generate_context!())
         .expect("启动 peon-hall 失败");

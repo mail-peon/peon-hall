@@ -32,13 +32,13 @@ const mappings = [
   { ts: 'DoctorReport', crate: 'peon-burrow-ipc-types', rust: 'DoctorReport' },
   { ts: 'CheckResult', crate: 'peon-burrow-ipc-types', rust: 'CheckResult' },
   { ts: 'Snapshot', crate: 'peon-hall', rust: 'Snapshot', file: 'src-tauri/src/snapshot.rs' },
-  { ts: 'Heartbeat', crate: 'peon-hall', rust: 'Heartbeat', file: 'src-tauri/src/commands.rs' },
-  { ts: 'ActionResult', crate: 'peon-hall', rust: 'ActionResult', file: 'src-tauri/src/commands.rs' },
-  { ts: 'AppInfo', crate: 'peon-hall', rust: 'AppInfo', file: 'src-tauri/src/commands.rs' },
+  { ts: 'Heartbeat', crate: 'peon-hall', rust: 'Heartbeat', file: 'src-tauri/src/commands/types.rs' },
+  { ts: 'ActionResult', crate: 'peon-hall', rust: 'ActionResult', file: 'src-tauri/src/commands/types.rs' },
+  { ts: 'AppInfo', crate: 'peon-hall', rust: 'AppInfo', file: 'src-tauri/src/commands/types.rs' },
   // 下面两个从前没在对拍里：`CommandError` 的 `suggestDoctor` 与 `CommandEvent` 的四个字段
   // 一旦漂移，抽屉里的报错提示会静默失效（H-5）。
-  { ts: 'CommandError', crate: 'peon-hall', rust: 'CommandError', file: 'src-tauri/src/commands.rs' },
-  { ts: 'CommandEvent', crate: 'peon-hall', rust: 'CommandEvent', file: 'src-tauri/src/commands.rs' },
+  { ts: 'CommandError', crate: 'peon-hall', rust: 'CommandError', file: 'src-tauri/src/commands/types.rs' },
+  { ts: 'CommandEvent', crate: 'peon-hall', rust: 'CommandEvent', file: 'src-tauri/src/commands/events.rs' },
 ]
 
 const tsSource = readFileSync(typesPath, 'utf8')

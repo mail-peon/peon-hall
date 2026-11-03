@@ -218,3 +218,11 @@ pnpm tauri dev
 | 7 | `updateApply` 触发后，界面进入「更新中」并在恢复后显示新版本号 |
 | 8 | 构建产物里搜不到 updater 插件（依赖与配置都验一遍） |
 | 9 | 本地联调（路径依赖）只在本地出现 —— CI 只认 git 依赖 |
+
+## 实现模块
+
+- `src-tauri/src/commands.rs` 保留命令与类型的公开门面；`commands/` 按状态查询、服务操作、控制面、桌面工具和命令事件划分。Tauri 注册直接使用对应子模块。
+- 服务操作与自启开关共用 `commands/events.rs` 的执行流程，提权取消仍作为独立结果返回。
+- `sidecar/process.rs` 管理隐藏子进程与输出流，`sidecar.rs` 负责参数契约与结果解析。
+- `useRelayState` 组合轮询、操作和诊断工具。轮询串行读取状态，操作后强制刷新会使旧响应失效；窗口隐藏或组件卸载时停止调度。
+- `useCommandTerminal` 管理终端及异步订阅，卸载后才完成的订阅会立即释放。
