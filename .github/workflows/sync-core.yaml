@@ -114,8 +114,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/core-${{ steps.latest.outputs.tag }}
           delete-branch: true
-          title: chore: bundle core ${{ steps.latest.outputs.tag }}
-          commit-message: chore: bundle core ${{ steps.latest.outputs.tag }}
+          # ⚠️ 这两个值里都有 `:`（`chore: ...`），必须加引号：YAML 会把裸值里的
+          #    冒号空格当成映射分隔，GitHub 直接报 "error in your yaml syntax"。
+          title: "chore: bundle core ${{ steps.latest.outputs.tag }}"
+          commit-message: "chore: bundle core ${{ steps.latest.outputs.tag }}"
           labels: dependencies
           body: |
             Automated bump of the bundled core (`bundle.toml`).
