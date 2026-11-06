@@ -1,0 +1,134 @@
+# 自动跟随 core（peon-burrow）的 release：把 `bundle.toml` 的 `[core] version` 升到最新 tag，开 PR。
+#
+# 为什么是**轮询**而不是 core 发版时通知：`GITHUB_TOKEN` 是**仓库级**的，core 那边的 token
+# 调不动本仓库的 `repository_dispatch`（会 404）。跨仓库通知必须配一个 PAT，本流程刻意不要
+# ——每天扫一次就够（core 发版不频繁），而且能手动 `workflow_dispatch` 立刻跑。
+#
+# 为什么开 PR 而不是直推 main：`bundle.toml` 决定**发布产物**里捆的是哪个 core，直推等于
+# 跳过评审；走 PR 会触发 ci.yaml 的 `the pinned core version must be downloadable` 与
+# `src-tauri/build.rs` 的同代校验，红了就在 PR 上看得见。
+#
+# ⚠️ 只改 `bundle.toml`，**不碰** `src-tauri/Cargo.toml` 的 `peon-burrow-ipc` 依赖：
+#    它的版本要求（`0.1.1`，语义是 `^0.1.1`）在 core 只发 patch 时本来就满足；真不同代时
+#    `build.rs` 会让 CI 报 `core.version 与 peon-burrow-ipc 不同代` —— 交给断言报，比脚本
+#    自己猜版本号格式安全。
+#
+# ⚠️ 除注释外**不要写中文**（含 job/step 的 name 与 echo 文案）。
+# ⚠️ name 里不要出现 `#`：GitHub 会把它当注释，后面的字就没了
+name: sync-core
+
+on:
+  schedule:
+    # 每天 UTC 02:00（北京时间 10:00）。core 发版后可以不等它，走下面的手动入口。
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: pin the latest core release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 从 bundle.toml 读一个**扁平**的值：与 scripts/fetch-sidecar.sh、ci.yaml 同一套 grep + sed 规则。
+      # 不引 TOML 解析器（Python/Node 的任意一个都对不齐那三个消费者的行为）。
+      - name: read the currently pinned core
+        id: pinned
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$(grep -E "^[[:space:]]*repo[[:space:]]*=" bundle.toml | head -1 \
+            | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/')"
+          version="$(grep -E "^[[:space:]]*version[[:space:]]*=" bundle.toml | head -1 \
+            | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*$/\1/')"
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "bundle.toml: repo=${repo} version=${version}"
+
+      # 取 core 的最新 release tag。core 是公开仓库，读它不需要额外凭证；
+      # 带 GITHUB_TOKEN 只是为了走已认证配额（匿名 API 只有 60 次/小时/IP）。
+      - name: resolve the latest core release
+        id: latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${{ steps.pinned.outputs.repo }}"
+          tag="$(gh release view --repo "${repo}" --json tagName -q .tagName)"
+          [ -n "${tag}" ] || { echo "::error::could not resolve the latest release of ${repo}"; exit 1; }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "latest core release of ${repo}: ${tag}"
+
+      - name: decide whether a bump is needed
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned="${{ steps.pinned.outputs.version }}"
+          latest="${{ steps.latest.outputs.tag }}"
+          if [ "${pinned}" = "${latest}" ]; then
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            echo "already on ${latest}; nothing to do"
+          else
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+            echo "${pinned} -> ${latest}"
+          fi
+
+      # 把 core 那个 tag 上的 IPC 协议版本取出来，写进 PR 正文，供人一眼判断协议有没有动。
+      # 读不到不算失败（PR 里标 unknown）：这里只是给人看的附加信息，不是守卫。
+      - name: note the core IPC protocol version
+        if: steps.decide.outputs.bump == 'true'
+        id: ipc
+        shell: bash
+        run: |
+          tag="${{ steps.latest.outputs.tag }}"
+          repo="${{ steps.pinned.outputs.repo }}"
+          raw="https://raw.githubusercontent.com/${repo}/${tag}/crates/peon-burrow-ipc-types/src/lib.rs"
+          version="$(curl -fsSL "${raw}" 2>/dev/null \
+            | sed -nE 's/.*IPC_PROTOCOL_VERSION:[[:space:]]*u16[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' \
+            | head -1 || true)"
+          echo "version=${version:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "core IPC protocol version: ${version:-unknown}"
+
+      - name: bump bundle.toml
+        if: steps.decide.outputs.bump == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="${{ steps.latest.outputs.tag }}"
+          sed -i -E "s/^([[:space:]]*version[[:space:]]*=[[:space:]]*)\"v[^\"]*\"/\1\"${latest}\"/" bundle.toml
+          # 断言真的改了：sed 没命中时静默成功，后面会开一个空 diff 的 PR。
+          grep -qE "^[[:space:]]*version[[:space:]]*=[[:space:]]*\"${latest}\"" bundle.toml \
+            || { echo "::error::bundle.toml still does not pin ${latest}"; exit 1; }
+          git --no-pager diff -- bundle.toml
+
+      - name: open a pull request
+        if: steps.decide.outputs.bump == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/core-${{ steps.latest.outputs.tag }}
+          delete-branch: true
+          title: chore: bundle core ${{ steps.latest.outputs.tag }}
+          commit-message: chore: bundle core ${{ steps.latest.outputs.tag }}
+          labels: dependencies
+          body: |
+            Automated bump of the bundled core (`bundle.toml`).
+
+            - core repo: `${{ steps.pinned.outputs.repo }}`
+            - pinned now: `${{ steps.pinned.outputs.version }}`
+            - pinning to: `${{ steps.latest.outputs.tag }}`
+            - core IPC protocol version: `${{ steps.ipc.outputs.version }}`
+
+            Merging is gated on `ci.yaml`:
+            - the pinned core version must be downloadable
+            - `src-tauri/build.rs` must agree that `bundle.toml` and the
+              `peon-burrow-ipc` dependency are the same generation
+
+            If CI reports a generation mismatch, bump `peon-burrow-ipc` in
+            `src-tauri/Cargo.toml` by hand: the IPC protocol moved.
