@@ -117,7 +117,11 @@ jobs:
         if: steps.decide.outputs.bump == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # ⚠️ 必须用 PAT（`SYNC_CORE_TOKEN`），不能用 `secrets.GITHUB_TOKEN`：本组织的
+          #    组织级策略锁死了 Workflow permissions，且禁止 Actions 创建 PR。仓库设置页
+          #    里那个选项是灰的，改不了 —— 而那个限制只作用于 GITHUB_TOKEN，不作用于用户
+          #    token。见 ci.yaml 的同类说明；PAT 权限只需 Contents + Pull requests 读写。
+          token: ${{ secrets.SYNC_CORE_TOKEN }}
           branch: chore/core-${{ steps.latest.outputs.tag }}
           delete-branch: true
           # ⚠️ 这两个值里都有 `:`（`chore: ...`），必须加引号：YAML 会把裸值里的
