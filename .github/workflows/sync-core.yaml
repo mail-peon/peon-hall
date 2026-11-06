@@ -32,7 +32,13 @@ jobs:
     name: pin the latest core release
     runs-on: ubuntu-latest
     steps:
+      # ⚠️ `persist-credentials: false` 不是可有可无的：checkout 默认会把带 token 的
+      #    认证头写进本地 git 配置，后面 create-pull-request 再配自己的凭据时，请求里
+      #    就同时带了两套 Authorization，GitHub 直接 400：
+      #    `Duplicate header: "Authorization"`（真踩过，2026-11-06）。
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # 从 bundle.toml 读一个**扁平**的值：与 scripts/fetch-sidecar.sh、ci.yaml 同一套 grep + sed 规则。
       # 不引 TOML 解析器（Python/Node 的任意一个都对不齐那三个消费者的行为）。
